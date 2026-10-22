@@ -786,56 +786,62 @@ else:
                 """, unsafe_allow_html=True)
 
             # ---------------------------------------------------------
-            # BLOQUE INFERIOR LLAMATIVO: VENTA CRUZADA SCTR (ORDER BUMP)
+            # BLOQUE INFERIOR INTERACTIVO: AGREGAR SCTR SIN SALIR DE LA PÁGINA
             # ---------------------------------------------------------
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-            # REEMPLAZA ESTA URL CON EL ENLACE REAL DE TU APLICACIÓN DE SCTR EN STREAMLIT
-            URL_DESTINO_SCTR = "https://TU-APP-SCTR.streamlit.app" 
-            
-            params_cruzados = urllib.parse.urlencode({
-                "razon": datos['razon_social'],
-                "ruc": datos['ruc'],
-                "cel": datos['celular'],
-                "mail": datos['email'],
-                "trab": datos['trabajadores'],
-                "planilla": datos['planilla']
-            })
-            link_cruzado_sctr = f"{URL_DESTINO_SCTR}?{params_cruzados}"
-            
-            msg_pack = (
-                f"Hola YQ, acabo de cotizar el Seguro Vida Ley ({folio}) para {datos['razon_social']} (RUC: {datos['ruc']}) "
-                f"con {mejor_cia} y deseo emitir también el SCTR Salud y Pensión para mis {datos['trabajadores']} trabajadores."
-            )
-            link_wa_pack = f"https://api.whatsapp.com/send?phone=51906462225&text={urllib.parse.quote(msg_pack)}"
-
-            st.markdown(f"""
-                <div style="background: linear-gradient(135deg, #F0F6FF 0%, #E6EEFF 100%); border: 2px solid #03318e; border-radius: 12px; padding: 22px; margin-top: 25px; box-shadow: 0 6px 15px rgba(3,49,142,0.08);">
-                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
+            st.markdown("""
+                <div style="background: linear-gradient(135deg, #F0F6FF 0%, #E6EEFF 100%); border: 2px solid #03318e; border-radius: 12px; padding: 20px; margin-top: 25px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
                         <span style="font-size: 28px;">🏗️</span>
                         <div>
-                            <h3 style="color: #03318e; margin: 0; font-weight: 800; font-size: 1.2rem;">
-                                ¿Tu personal realiza labores operativas y necesita SCTR?
+                            <h3 style="color: #03318e; margin: 0; font-weight: 800; font-size: 1.15rem;">
+                                ¿También te exigen SCTR Salud y Pensión para ingresar a obra o planta?
                             </h3>
-                            <p style="color: #3c3c3c; font-size: 0.95rem; margin: 2px 0 0 0;">
-                                Completa el ecosistema de seguridad de tu empresa exigiéndolo junto con tu Vida Ley.
+                            <p style="color: #3c3c3c; font-size: 0.92rem; margin: 3px 0 0 0;">
+                                Cotízalo <b>aquí mismo en 1 clic</b> usando tu misma planilla de <b>S/ {:,.2f}</b> ({} trabajadores), sin volver a llenar tus datos.
                             </p>
                         </div>
                     </div>
-                    <hr style="border: none; border-top: 1px solid #cbd5e1; margin: 12px 0;">
-                    <p style="color: #475569; font-size: 0.9rem; margin-bottom: 15px; line-height: 1.4;">
-                        Hemos guardado los datos de <b>{datos['razon_social']}</b> ({datos['trabajadores']} trabajadores). Haz clic abajo para cotizar el SCTR al instante con la misma planilla o solicita ambos seguros directamente por WhatsApp:
-                    </p>
-                    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                        <a href="{link_cruzado_sctr}" target="_blank" style="flex: 1; min-width: 240px; text-align: center; background-color: #03318e; color: white; padding: 12px 18px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 15px; box-shadow: 0 4px 10px rgba(3,49,142,0.2);">
-                            ⚡ Cotizar SCTR con mis datos (1 Clic)
-                        </a>
-                        <a href="{link_wa_pack}" target="_blank" style="flex: 1; min-width: 240px; text-align: center; background-color: #089685; color: white; padding: 12px 18px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 15px; box-shadow: 0 4px 10px rgba(8,150,133,0.2);">
-                            📦 Solicitar Pack Vida Ley + SCTR (WhatsApp)
-                        </a>
-                    </div>
                 </div>
-            """, unsafe_allow_html=True)
+            """.format(datos['planilla'], datos['trabajadores']), unsafe_allow_html=True)
+
+            agregar_sctr = st.checkbox("➕ Sí, deseo ver y agregar la cotización de SCTR para esta misma planilla", value=False)
+            
+            if agregar_sctr:
+                df_sctr_base = cargar_tarifario_sctr_addon()
+                if df_sctr_base is not None:
+                    c_s1, c_s2 = st.columns(2)
+                    with c_s1:
+                        rubros_sctr = df_sctr_base['Rubro'].dropna().unique().tolist()
+                        rubro_sctr_sel = st.selectbox("Confirma el Giro SCTR:", rubros_sctr, key="addon_rubro_sctr")
+                    with c_s2:
+                        acts_sctr = df_sctr_base[df_sctr_base['Rubro'] == rubro_sctr_sel]['Actividad'].dropna().unique().tolist()
+                        act_sctr_sel = st.selectbox("Actividad Específica (CIIU):", acts_sctr, key="addon_act_sctr")
+                    
+                    df_res_sctr = calcular_sctr_addon(df_sctr_base, rubro_sctr_sel, act_sctr_sel, datos['planilla'])
+                    if not df_res_sctr.empty:
+                        mejor_sctr_cia = df_res_sctr.iloc[0]['Aseguradora']
+                        mejor_sctr_mes = df_res_sctr.iloc[0]['Total Mensual SCTR']
+                        
+                        df_sctr_vista = df_res_sctr.copy()
+                        for c_m in ['Salud c/IGV', 'Pensión c/IGV', 'Total Mensual SCTR', 'Total Anual SCTR']:
+                            df_sctr_vista[c_m] = df_sctr_vista[c_m].apply(lambda x: f"S/ {x:,.2f}")
+                        st.dataframe(df_sctr_vista, hide_index=True, use_container_width=True)
+                        
+                        # Resumen del PACK CORPORATIVO (Vida Ley + SCTR)
+                        pack_mensual = mejor_mes + mejor_sctr_mes
+                        st.info(f"💼 **PACK CORPORATIVO COMPLETO:** Vida Ley ({mejor_cia}) + SCTR ({mejor_sctr_cia}) = **S/ {pack_mensual:,.2f} / mes** (o Vida Ley Anual S/ {mejor_anual:,.2f} + SCTR Mensual S/ {mejor_sctr_mes:,.2f}).")
+                        
+                        msg_pack = (
+                            f"Hola YQ, acabo de cotizar el PACK CORPORATIVO ({folio}) para {datos['razon_social']} (RUC: {datos['ruc']}, {datos['trabajadores']} trab.): "
+                            f"1) Vida Ley con {mejor_cia} (Anual: S/ {mejor_anual:,.2f} / Mensual: S/ {mejor_mes:,.2f}) + "
+                            f"2) SCTR con {mejor_sctr_cia} (S/ {mejor_sctr_mes:,.2f}/mes). Deseo emitir ambas pólizas."
+                        )
+                        link_wa_pack = f"https://api.whatsapp.com/send?phone=51906462225&text={urllib.parse.quote(msg_pack)}"
+                        st.markdown(f"""
+                            <a href='{link_wa_pack}' target='_blank' style='display: flex; align-items: center; justify-content: center; width: 100%; height: 48px; background-color: #089685; color: white; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 16px;'>
+                                📦 Emitir Pack Completo (Vida Ley + SCTR) por WhatsApp
+                            </a>
+                        """, unsafe_allow_html=True)
 # ==========================================
 # 6. PIE DE PÁGINA: ACCESO ADMIN
 # ==========================================
