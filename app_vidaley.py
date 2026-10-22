@@ -712,54 +712,79 @@ else:
                     f"Destacamos a <b>{mejor_opcion_elegida}</b> como la alternativa de mayor eficiencia financiera.{txt_ahorro}"
                 )
 
-            st.markdown("---")
-            st.success(f"¡Cotización lista! Opción recomendada por eficiencia anual: **{mejor_opcion_elegida}**")
+            # ---------------------------------------------------------
+            # CREACIÓN DE PESTAÑAS (CROSS-SELLING NATIVO SIN SALIR)
+            # ---------------------------------------------------------
+            tab1, tab2 = st.tabs(["🛡️ 1. Cotización Vida Ley", "➕ 2. Agregar SCTR (Recomendado)"])
             
-            df_vista = df_res[['Aseguradora', 'Bruto_Mensual', 'Bruto_Trimestral', 'Bruto_Semestral', 'Bruto_Anual']].copy()
-            df_vista.columns = ['Aseguradora', 'Mensual c/IGV', 'Trimestral c/IGV', 'Semestral c/IGV', 'Anual c/IGV (Recomendado)']
-            for col_m in ['Mensual c/IGV', 'Trimestral c/IGV', 'Semestral c/IGV', 'Anual c/IGV (Recomendado)']:
-                df_vista[col_m] = df_vista[col_m].apply(lambda x: f"S/ {x:,.2f}")
-            
-            st.dataframe(df_vista, hide_index=True, use_container_width=True)
+            with tab1:
+                st.markdown("---")
+                st.success(f"¡Cotización lista! Opción recomendada por eficiencia anual: **{mejor_opcion_elegida}**")
+                
+                df_vista = df_res[['Aseguradora', 'Bruto_Mensual', 'Bruto_Trimestral', 'Bruto_Semestral', 'Bruto_Anual']].copy()
+                df_vista.columns = ['Aseguradora', 'Mensual c/IGV', 'Trimestral c/IGV', 'Semestral c/IGV', 'Anual c/IGV (Recomendado)']
+                for col_m in ['Mensual c/IGV', 'Trimestral c/IGV', 'Semestral c/IGV', 'Anual c/IGV (Recomendado)']:
+                    df_vista[col_m] = df_vista[col_m].apply(lambda x: f"S/ {x:,.2f}")
+                
+                st.dataframe(df_vista, hide_index=True, use_container_width=True)
 
-            folio = st.session_state['id_vl']
-            pdf_buffer = generar_pdf_vidaley(datos, df_res, folio, razon_admin)
-            nombre_clean = re.sub(r'[^a-zA-Z0-9]', '', datos['razon_social'])[:15] or "Empresa"
+                folio = st.session_state['id_vl']
+                pdf_buffer = generar_pdf_vidaley(datos, df_res, folio, razon_admin)
+                nombre_clean = re.sub(r'[^a-zA-Z0-9]', '', datos['razon_social'])[:15] or "Empresa"
 
-            col_b1, col_b2 = st.columns(2)
-            with col_b1:
-                st.download_button(
-                    label="Descargar Slip Oficial Vida Ley (PDF)",
-                    data=pdf_buffer,
-                    file_name=f"SLIP_VIDALEY_{nombre_clean}_{obtener_hora_peru().strftime('%d%m%y')}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-            with col_b2:
-                mejor_cia = df_res.iloc[0]['Aseguradora']
-                mejor_anual = df_res.iloc[0]['Bruto_Anual']
-                mejor_mes = df_res.iloc[0]['Bruto_Mensual']
-                msg_wa = f"Hola YQ, acabo de cotizar el Seguro Vida Ley ({folio}) para {datos['razon_social']} y deseo emitir mi póliza con {mejor_cia} (Anual: S/ {mejor_anual:,.2f} / Mensual: S/ {mejor_mes:,.2f})."
-                enlace_wa = f"https://api.whatsapp.com/send?phone=51906462225&text={urllib.parse.quote(msg_wa)}"
-                st.markdown(f"""
-                    <a href='{enlace_wa}' target='_blank' style='display: flex; align-items: center; justify-content: center; width: 100%; height: 48px; background-color: #25D366; color: white; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 16px; box-sizing: border-box;'>
-                        Emitir Póliza por WhatsApp
-                    </a>
+                col_b1, col_b2 = st.columns(2)
+                with col_b1:
+                    st.download_button(
+                        label="Descargar Slip Oficial Vida Ley (PDF)",
+                        data=pdf_buffer,
+                        file_name=f"SLIP_VIDALEY_{nombre_clean}_{obtener_hora_peru().strftime('%d%m%y')}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+                with col_b2:
+                    mejor_cia = df_res.iloc[0]['Aseguradora']
+                    mejor_anual = df_res.iloc[0]['Bruto_Anual']
+                    mejor_mes = df_res.iloc[0]['Bruto_Mensual']
+                    msg_wa = f"Hola YQ, acabo de cotizar el Seguro Vida Ley ({folio}) para {datos['razon_social']} y deseo emitir mi póliza con {mejor_cia} (Anual: S/ {mejor_anual:,.2f} / Mensual: S/ {mejor_mes:,.2f})."
+                    enlace_wa = f"https://api.whatsapp.com/send?phone=51906462225&text={urllib.parse.quote(msg_wa)}"
+                    st.markdown(f"""
+                        <a href='{enlace_wa}' target='_blank' style='display: flex; align-items: center; justify-content: center; width: 100%; height: 48px; background-color: #25D366; color: white; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 16px; box-sizing: border-box;'>
+                            Emitir Póliza por WhatsApp
+                        </a>
+                    """, unsafe_allow_html=True)
+
+            with tab2:
+                st.markdown("""
+                    <div style="background-color: #F0F6FF; border: 1.5px solid #03318e; border-radius: 10px; padding: 18px; margin-bottom: 20px;">
+                        <h4 style="color: #03318e; margin-top: 0; margin-bottom: 6px; font-weight: 800; font-size: 1.1rem;">
+                            🏗️ Cotizador SCTR Salud y Pensión
+                        </h4>
+                        <p style="color: #3c3c3c; font-size: 0.95rem; margin-bottom: 0;">
+                            Hemos sincronizado los datos de tu empresa. Cotiza y descarga tu SCTR aquí mismo sin salir de la página.
+                        </p>
+                    </div>
                 """, unsafe_allow_html=True)
-
-            # --- BLOQUE DE VENTA CRUZADA: DE VIDA LEY A SCTR ---
-            st.markdown("<br>", unsafe_allow_html=True)
-            URL_DESTINO_SCTR = "https://yqcorredores.com/seguro-sctr/" 
-            params_cruzados = urllib.parse.urlencode({
-                "razon": datos['razon_social'],
-                "ruc": datos['ruc'],
-                "cel": datos['celular'],
-                "mail": datos['email'],
-                "trab": datos['trabajadores'],
-                "planilla": datos['planilla']
-            })
-            link_cruzado_sctr = f"{URL_DESTINO_SCTR}?{params_cruzados}"
-            
+                
+                import streamlit.components.v1 as components
+                
+                # 👇 REEMPLAZA ESTA URL CON EL ENLACE REAL DE TU APLICACIÓN DE SCTR EN STREAMLIT
+                URL_APP_SCTR = "https://cotizador-sctr-yq.streamlit.app" 
+                
+                # Empaquetamos los datos de Vida Ley para enviarlos invisiblemente al SCTR
+                params_cruzados = urllib.parse.urlencode({
+                    "razon": datos['razon_social'],
+                    "ruc": datos['ruc'],
+                    "cel": datos['celular'],
+                    "mail": datos['email'],
+                    "trab": datos['trabajadores'],
+                    "planilla": datos['planilla'],
+                    "origen": "cross_selling"
+                })
+                
+                url_iframe = f"{URL_APP_SCTR}/?embed=true&{params_cruzados}"
+                
+                # Incrustamos la otra aplicación nativamente
+                components.iframe(url_iframe, height=900, scrolling=True)            
             msg_pack = (
                 f"Hola YQ, acabo de cotizar el Seguro Vida Ley ({folio}) para {datos['razon_social']} (RUC: {datos['ruc']}) "
                 f"con {mejor_cia} y deseo emitir también el SCTR Salud y Pensión para mis {datos['trabajadores']} trabajadores."
