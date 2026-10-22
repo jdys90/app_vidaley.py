@@ -407,27 +407,62 @@ def generar_pdf_vidaley(datos, df_res, folio, razon_experto=""):
 # 4. MOTOR DE CÁLCULO VIDA LEY (LECTOR EXCEL)
 # ==========================================
 @st.cache_data
-def cargar_tarifario_vidaley():
-    archivos = ['tarifario_vidaley.xlsx', 'Tarifario_vidaley.xlsx']
+def cargar_tarifario_sctr_addon():
+    archivos = ['Tarifario_sctr.xlsx', 'tarifario_sctr.xlsx']
     ruta = next((f for f in archivos if os.path.exists(f)), None)
     if not ruta:
-        return None, None
+        return None
     try:
         xls = pd.ExcelFile(ruta)
-        df_h1 = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
-        df_h2 = pd.read_excel(xls, sheet_name=xls.sheet_names[1])
-        
-        df_h1.columns = df_h1.columns.str.strip()
-        df_h2.columns = df_h2.columns.str.strip()
-        
-        df_h1['ACTIVIDAD_CLEAN'] = df_h1['ACTIVIDAD'].astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
-        df_h1['RANGO_CLEAN'] = df_h1['RANGO DE EDAD'].astype(str).str.strip()
-        df_h2['Concepto_Clean'] = df_h2['Concepto'].astype(str).str.strip()
-        return df_h1, df_h2
-    except Exception as e:
-        st.error(f"Error leyendo Excel Vida Ley: {e}")
-        return None, None
+        df = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
+        df.columns = df.columns.str.strip()
+        return df
+    except Exception:
+        return None
 
+def calcular_sctr_addon(df_sctr, rubro_sel, act_sel, planilla_total):
+    fila = df_sctr[(df_sctr['Rubro'] == rubro_sel) & (df_sctr['Actividad'] == act_sel)]
+    if fila.empty:
+        return pd.DataFrame()
+    row = fila.iloc[0]
+    
+    # Estructura estándar de tus aseguradoras en Tarifario_sctr.xlsx
+    cias = [
+        ("Rímac", "Tasa_Salud_Rimac", "Min_Salud_Rimac", "Tasa_Pension_Rimac", "Min_Pension_Rimac", 1.03),
+        ("Pacífico", "Tasa_Salud_Pacifico", "Min_Salud_Pacifico", "Tasa_Pension_Pacifico", "Min_Pension_Pacifico", 1.03),
+        ("Mapfre", "Tasa_Salud_Mapfre", "Min_Salud_Mapfre", "Tasa_Pension_Mapfre", "Min_Pension_Mapfre", 1.03),
+        ("Sanitas - Protecta", "Tasa_Salud_Sanitas", "Min_Salud_Sanitas", "Tasa_Pension_Protecta", "Min_Pension_Protecta", 1.00)
+    ]
+    res = []
+    for nombre, col_ts, col_ms, col_tp, col_mp, der_emision in cias:
+        if col_ts in row and pd.notna(row[col_ts]):
+            t_sal = float(row[col_ts])
+            m_sal = float(row[col_ms]) if col_ms in row and pd.notna(row[col_ms]) else 0.0
+            t_pen = float(row[col_tp]) if col_tp in row and pd.notna(row[col_tp]) else 0.0
+            m_pen = float(row[col_mp]) if col_mp in row and pd.notna(row[col_mp]) else 0.0
+            
+            # Si las tasas vienen en porcentaje (ej. 1.20) o decimal (0.012)
+            factor_s = (t_sal / 100.0) if t_sal > 0.1 else t_sal
+            factor_p = (t_pen / 100.0) if t_pen > 0.1 else t_pen
+            
+            neto_sal = max(planilla_total * factor_s, m_sal)
+            neto_pen = max(planilla_total * factor_p, m_pen)
+            
+            bruto_sal = round(neto_sal * 1.18, 2)
+            bruto_pen = round(neto_pen * der_emision * 1.18, 2)
+            total_mes = round(bruto_sal + bruto_pen, 2)
+            
+            res.append({
+                "Aseguradora": nombre,
+                "Salud c/IGV": bruto_sal,
+                "Pensión c/IGV": bruto_pen,
+                "Total Mensual SCTR": total_mes,
+                "Total Anual SCTR": round(total_mes * 12, 2)
+            })
+    df_out = pd.DataFrame(res)
+    if not df_out.empty:
+        df_out = df_out.sort_values(by="Total Mensual SCTR", ascending=True).reset_index(drop=True)
+    return df_out
 def cotizar_vidaley(actividad_clean, categoria_sel, planilla_por_rango):
     df_h1, df_h2 = cargar_tarifario_vidaley()
     if df_h1 is None or df_h2 is None:
