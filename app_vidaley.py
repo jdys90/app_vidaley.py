@@ -147,33 +147,96 @@ def cotizar_vidaley(actividad_clean, categoria_sel, planilla_por_rango):
 @st.cache_data
 def cargar_tarifario_sctr_addon():
     try:
-        ruta = next((f for f in ['Tarifario_sctr.xlsx', 'tarifario_sctr.xlsx'] if os.path.exists(f)), None)
-        if not ruta: return None
-        df = pd.read_excel(ruta)
-        df.columns = df.columns.str.strip()
-        return df
-    except Exception: return None
+        # Busca el nombre del archivo exacto de tus capturas
+        ruta = next((f for f in ['Tarifario_sctr_3.xlsx', 'tarifario_sctr.xlsx', 'Tarifario_sctr.xlsx'] if os.path.exists(f)), None)
+        if not ruta: return None, None
+        
+        # Lee ambas hojas: la de tasas y la de impuestos_minimos
+        xls = pd.ExcelFile(ruta)
+        df_tasas = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
+        df_minimos = pd.read_excel(xls, sheet_name=xls.sheet_names[1])
+        
+        df_tasas.columns = df_tasas.columns.str.strip()
+        df_minimos.columns = df_minimos.columns.str.strip()
+        
+        # Mapea los nombres largos de la Hoja 1
+        renombres = {
+            'Rubro Comercial (Nombre amigable para la web)': 'Rubro',
+            'Actividades / CIIU Principales que agrupa': 'Actividad',
+            'Rímac Salud': 'Tasa_Salud_Rimac',
+            'Rímac Pensión': 'Tasa_Pension_Rimac',
+            'Pacífico Salud': 'Tasa_Salud_Pacifico',
+            'Pacífico Pensión': 'Tasa_Pension_Pacifico',
+            'Mapfre Salud': 'Tasa_Salud_Mapfre',
+            'Mapfre Pensión': 'Tasa_Pension_Mapfre',
+            'Sanitas Salud': 'Tasa_Salud_Sanitas',
+            'Protecta Pensión': 'Tasa_Pension_Protecta'
+        }
+        df_tasas = df_tasas.rename(columns=renombres)
+        return df_tasas, df_minimos
+    except Exception: return None, None
 
-def calcular_sctr_addon(df_sctr, rubro_sel, act_sel, planilla_total):
+def calcular_sctr_addon(df_sctr, df_minimos, rubro_sel, act_sel, planilla_total):
     fila = df_sctr[(df_sctr['Rubro'] == rubro_sel) & (df_sctr['Actividad'] == act_sel)]
     if fila.empty: return pd.DataFrame()
     row = fila.iloc[0]
     
-    cias = [("Rímac", "Tasa_Salud_Rimac", "Min_Salud_Rimac", "Tasa_Pension_Rimac", "Min_Pension_Rimac", 1.03),
-            ("Pacífico", "Tasa_Salud_Pacifico", "Min_Salud_Pacifico", "Tasa_Pension_Pacifico", "Min_Pension_Pacifico", 1.03),
-            ("Mapfre", "Tasa_Salud_Mapfre", "Min_Salud_Mapfre", "Tasa_Pension_Mapfre", "Min_Pension_Mapfre", 1.03),
-            ("Sanitas + Protecta", "Tasa_Salud_Sanitas", "Min_Salud_Sanitas", "Tasa_Pension_Protecta", "Min_Pension_Protecta", 1.00)]
+    # Función interna para extraer valores numéricos de la hoja "impuestos_minimos"
+    def get_val(df_m, concepto, col_name, default=0.0):
+        try:
+            # Busca las columnas de la Hoja 2 ("Rímac Salud", "Pacífico Pens...", etc)
+            col_match = next((c for c in df_m.columns if str(col_name) in str(c)), None)
+            if not col_match: return default
+            
+            val = df_m.loc[df_m['Concepto'].str.contains(concepto, case=False, na=False), col_match].values[0]
+            if isinstance(val, str):
+                if '%' in val:
+                    return float(val.replace('%', '').replace(',', '.')) / 100.0
+                return float(val.replace(',', '.'))
+            return float(val)
+        except: return default
+
+    # Aseguradoras mapeadas contra los nombres de columna en tu Hoja 2
+    cias = [
+        ("Rímac", "Tasa_Salud_Rimac", "Rímac Salud", "Tasa_Pension_Rimac", "Rímac Pens"),
+        ("Pacífico", "Tasa_Salud_Pacifico", "Pacífico Salu", "Tasa_Pension_Pacifico", "Pacífico Pens"),
+        ("Mapfre", "Tasa_Salud_Mapfre", "Mapfre Salu", "Tasa_Pension_Mapfre", "Mapfre Pensi"),
+        ("Sanitas + Protecta", "Tasa_Salud_Sanitas", "Sanitas Salu", "Tasa_Pension_Protecta", "Protecta Per")
+    ]
+    
     res = []
-    for nombre, col_ts, col_ms, col_tp, col_mp, der_emision in cias:
-        if col_ts in row and pd.notna(row[col_ts]):
-            t_sal, m_sal = float(row[col_ts]), float(row[col_ms]) if col_ms in row and pd.notna(row[col_ms]) else 0.0
-            t_pen, m_pen = float(row[col_tp]) if col_tp in row and pd.notna(row[col_tp]) else 0.0, float(row[col_mp]) if col_mp in row and pd.notna(row[col_mp]) else 0.0
+    for nombre, col_ts, col_hoja2_s, col_tp, col_hoja2_p in cias:
+        if col_ts in row and pd.notna(row[col_ts]) and col_tp in row and pd.notna(row[col_tp]):
+            t_sal, t_pen = float(row[col_ts]), float(row[col_tp])
+            factor_s = (t_sal / 100.0) if t_sal > 0.1 else t_sal
+            factor_p = (t_pen / 100.0) if t_pen > 0.1 else t_pen
             
-            factor_s, factor_p = (t_sal / 100.0) if t_sal > 0.1 else t_sal, (t_pen / 100.0) if t_pen > 0.1 else t_pen
-            neto_sal, neto_pen = max(planilla_total * factor_s, m_sal), max(planilla_total * factor_p, m_pen)
-            bruto_sal, bruto_pen = round(neto_sal * 1.18, 2), round(neto_pen * der_emision * 1.18, 2)
+            # 1. Extracción de Primas Mínimas de Emisión
+            min_s = get_val(df_minimos, 'Prima Minima Emision', col_hoja2_s, 60.0)
+            min_p = get_val(df_minimos, 'Prima Minima Emision', col_hoja2_p, 60.0)
             
-            res.append({"Aseguradora SCTR": nombre, "Salud c/IGV": bruto_sal, "Pensión c/IGV": bruto_pen, "Total Mensual SCTR": round(bruto_sal + bruto_pen, 2), "Total Anual SCTR": round((bruto_sal + bruto_pen) * 12, 2)})
+            # 2. Extracción de Impuestos (18% para Salud, 21.54% para Pensión según tu Excel)
+            imp_s = get_val(df_minimos, 'Impuestos', col_hoja2_s, 0.18)
+            imp_p = get_val(df_minimos, 'Impuestos', col_hoja2_p, 0.2154)
+            
+            if imp_s > 1: imp_s = imp_s / 100.0
+            if imp_p > 1: imp_p = imp_p / 100.0
+            
+            # 3. Matemática Oficial (Neto vs Mínimo) + Impuestos
+            neto_sal = max(planilla_total * factor_s, min_s)
+            neto_pen = max(planilla_total * factor_p, min_p)
+            
+            bruto_sal = round(neto_sal * (1 + imp_s), 2)
+            bruto_pen = round(neto_pen * (1 + imp_p), 2)
+            
+            res.append({
+                "Aseguradora SCTR": nombre, 
+                "Salud c/IGV": bruto_sal, 
+                "Pensión c/IGV": bruto_pen, 
+                "Total Mensual SCTR": round(bruto_sal + bruto_pen, 2), 
+                "Total Anual SCTR": round((bruto_sal + bruto_pen) * 12, 2)
+            })
+            
     df_out = pd.DataFrame(res)
     if not df_out.empty: df_out = df_out.sort_values(by="Total Mensual SCTR", ascending=True).reset_index(drop=True)
     return df_out
