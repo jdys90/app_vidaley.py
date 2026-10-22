@@ -5,4 +5,4 @@ reportlab
 gspread
 google-auth
 requests
-pytz
+Pillow
