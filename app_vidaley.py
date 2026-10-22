@@ -412,7 +412,7 @@ else:
                 ver_sctr = st.checkbox("➕ Sí, deseo ver y agregar la cotización de SCTR para esta misma planilla", value=st.session_state['ver_sctr'])
                 st.session_state['ver_sctr'] = ver_sctr
                 
-                if ver_sctr:
+            if ver_sctr:
                 df_sctr_base, df_sctr_minimos = cargar_tarifario_sctr_addon()
                 if df_sctr_base is not None and df_sctr_minimos is not None:
                     st.markdown("<div style='padding: 15px; border: 1px solid #DEE2E6; border-radius: 8px; margin-top: 10px;'>", unsafe_allow_html=True)
