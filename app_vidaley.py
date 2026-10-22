@@ -249,53 +249,205 @@ def generar_pdf_vidaley(datos, df_res, folio, razon_experto=""):
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=15, leftMargin=15, topMargin=16, bottomMargin=16)
     estilos = getSampleStyleSheet()
 
-    AZUL_CORP, GRIS_TEXTO, GRIS_FONDO, BORDE_SUAVE = colors.HexColor("#03318e"), colors.HexColor("#3c3c3c"), colors.HexColor("#F8F9FA"), colors.HexColor("#DEE2E6")
+    AZUL_CORP = colors.HexColor("#03318e")
+    VERDE_EXITO = colors.HexColor("#089685")
+    DORADO_VIP = colors.HexColor("#bf8d1b")
+    AZUL_CLARO = colors.HexColor("#F0F6FF")
+    GRIS_TEXTO = colors.HexColor("#3c3c3c")
+    GRIS_FONDO = colors.HexColor("#F8F9FA")
+    BORDE_SUAVE = colors.HexColor("#DEE2E6")
+
     st_tit = ParagraphStyle('T', parent=estilos['Heading1'], fontName='Helvetica-Bold', fontSize=13, textColor=AZUL_CORP, leading=15)
     st_sub = ParagraphStyle('S', parent=estilos['Normal'], fontName='Helvetica-Bold', fontSize=9.5, textColor=AZUL_CORP, spaceAfter=4)
     st_norm = ParagraphStyle('N', parent=estilos['Normal'], fontSize=8, textColor=GRIS_TEXTO, leading=10.5)
     st_bold = ParagraphStyle('B', parent=st_norm, fontName='Helvetica-Bold', textColor=AZUL_CORP)
-    st_th = ParagraphStyle('TH', parent=estilos['Normal'], fontSize=7.5, fontName='Helvetica-Bold', textColor=colors.white, alignment=1)
-    st_td_c = ParagraphStyle('TDC', parent=estilos['Normal'], fontSize=7.5, textColor=GRIS_TEXTO, alignment=1)
+    st_th = ParagraphStyle('TH', parent=estilos['Normal'], fontSize=7.5, fontName='Helvetica-Bold', textColor=colors.white, alignment=1, leading=9)
+    st_td = ParagraphStyle('TD', parent=estilos['Normal'], fontSize=7.5, textColor=GRIS_TEXTO, leading=9.5)
+    st_td_c = ParagraphStyle('TDC', parent=st_td, alignment=1)
+    st_rec = ParagraphStyle('REC', parent=st_td_c, fontName='Helvetica-Bold', fontSize=7, textColor=DORADO_VIP)
 
     elements = []
-    img_yq = ImageRL("logo.png", width=3.8*cm, height=1.9*cm, kind='proportional') if os.path.exists("logo.png") else Paragraph("<b>YQ</b>", st_tit)
-    p_header = Paragraph("<b>YQ CORREDORES DE SEGUROS</b><br/>Slip de Cotización Seguro Vida Ley<br/><font size='7.5' color='#666666'>D.L. N° 688 / Ley N° 29549 (Desde el 1er día)</font>", st_tit)
-    p_folio = Paragraph(f"<font color='#3c3c3c'><b>Cotización:</b> {folio}<br/><b>Fecha:</b> {obtener_hora_peru().strftime('%d/%m/%Y %H:%M')}</font>", ParagraphStyle('F', parent=st_norm, alignment=2))
+
+    # --- 1. CABECERA ---
+    img_yq = ImageRL("logo.png", width=3.8*cm, height=1.9*cm, kind='proportional') if os.path.exists("logo.png") else Paragraph("<b>YQ CORREDORES</b>", st_tit)
+    p_header = Paragraph(
+        "<b>YQ CORREDORES DE SEGUROS</b><br/>Slip de Cotización Seguro Vida Ley<br/>"
+        "<font size='7.5' color='#666666'>Decreto Legislativo N° 688 / Ley N° 29549 / D.U. N° 044-2019 (Desde el 1er día)</font>", st_tit
+    )
+    fecha_str = obtener_hora_peru().strftime('%d/%m/%Y %H:%M')
+    p_folio = Paragraph(f"<font color='#3c3c3c'><b>Cotización:</b> {folio}<br/><b>Fecha:</b> {fecha_str}<br/><b>Validez:</b> 15 días</font>", ParagraphStyle('F', parent=st_norm, alignment=2))
+
     t_head = Table([[img_yq, p_header, p_folio]], colWidths=[3.8*cm, 9.7*cm, 4.5*cm])
     t_head.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('LINEBELOW', (0,0), (-1,-1), 1, AZUL_CORP), ('BOTTOMPADDING', (0,0), (-1,-1), 6)]))
-    elements.extend([t_head, Spacer(1, 8)])
+    elements.append(t_head)
+    elements.append(Spacer(1, 8))
 
-    elements.append(Paragraph("1. INFORMACIÓN DEL CONTRATANTE Y PLANILLA", st_sub))
-    t_cli = Table([[Paragraph("<b>Contratante:</b>", st_bold), Paragraph(datos['razon_social'], st_norm), Paragraph("<b>RUC / DNI:</b>", st_bold), Paragraph(datos['ruc'], st_norm)],
-                   [Paragraph("<b>Actividad:</b>", st_bold), Paragraph(datos['actividad'], st_norm), Paragraph("<b>Trabajadores:</b>", st_bold), Paragraph(f"{datos['trabajadores']} ({datos['categoria']})", st_norm)],
-                   [Paragraph("<b>Edades:</b>", st_bold), Paragraph(datos['resumen_edades'], st_norm), Paragraph("<b>Planilla Total:</b>", st_bold), Paragraph(f"<b>S/ {datos['planilla']:,.2f}</b>", st_norm)]], colWidths=[2.5*cm, 8.0*cm, 3.0*cm, 4.5*cm])
-    t_cli.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), GRIS_FONDO), ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE), ('INNERGRID', (0,0), (-1,-1), 0.5, BORDE_SUAVE), ('PADDING', (0,0), (-1,-1), 4)]))
-    elements.extend([t_cli, Spacer(1, 10)])
+    # --- 2. DATOS DEL CONTRATANTE Y PLANILLA ---
+    elements.append(Paragraph("1. INFORMACIÓN DEL CONTRATANTE Y PLANILLA ASEGURABLE", st_sub))
+    data_cliente = [
+        [Paragraph("<b>Contratante:</b>", st_bold), Paragraph(datos['razon_social'], st_norm),
+         Paragraph("<b>RUC / DNI:</b>", st_bold), Paragraph(datos['ruc'], st_norm)],
+        [Paragraph("<b>Actividad:</b>", st_bold), Paragraph(datos['actividad'], st_norm),
+         Paragraph("<b>N° Trabajadores:</b>", st_bold), Paragraph(f"{datos['trabajadores']} asegurados ({datos['categoria']})", st_norm)],
+        [Paragraph("<b>Distribución Etaria:</b>", st_bold), Paragraph(datos['resumen_edades'], st_norm),
+         Paragraph("<b>Planilla Mensual:</b>", st_bold), Paragraph(f"<b>S/ {datos['planilla']:,.2f}</b>", st_norm)]
+    ]
+    t_cli = Table(data_cliente, colWidths=[3.0*cm, 7.5*cm, 3.0*cm, 4.5*cm])
+    t_cli.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), GRIS_FONDO),
+        ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('PADDING', (0,0), (-1,-1), 4)
+    ]))
+    elements.append(t_cli)
+    elements.append(Spacer(1, 10))
 
-    elements.append(Paragraph("2. PROPUESTA ECONÓMICA (MONTOS FINALES CON IGV)", st_sub))
-    data_tabla = [[Paragraph(h, st_th) for h in ['Aseguradora', 'Mensual\n(c/IGV)', 'Trimestral\n(c/IGV)', 'Semestral\n(c/IGV)', 'Anual Único\n(c/IGV)']]]
+    # --- 3. PROPUESTA ECONÓMICA (4 FRECUENCIAS DE PAGO CON IGV) ---
+    elements.append(Paragraph("2. PROPUESTA ECONÓMICA POR FRECUENCIA DE PAGO (MONTOS FINALES CON IGV 18%)", st_sub))
+    
+    headers = ['Aseguradora', 'Pago Mensual\n(c/IGV)', 'Pago Trimestral\n(c/IGV)', 'Pago Semestral\n(c/IGV)', 'Pago Anual Único\n(c/IGV)', 'Acción / Emisión']
+    anchos = [3.4*cm, 3.0*cm, 3.0*cm, 3.0*cm, 3.0*cm, 2.6*cm]
+    data_tabla = [[Paragraph(h, st_th) for h in headers]]
+
     for idx, row in df_res.iterrows():
+        es_mejor = (idx == 0)
         cia = str(row['Aseguradora'])
-        mapa_logos = {"Rímac": "logo_rimac.png", "Pacífico": "logo_pacifico.png", "Mapfre": "logo_mapfre.png", "Protecta": "logo_protecta.png"}
+
+        celda_cia = []
+        if es_mejor:
+            celda_cia.append(Paragraph("<b>► MEJOR OPCIÓN</b>", st_rec))
+
+        mapa_logos = {
+            "Rímac": "logo_rimac.png",
+            "Pacífico": "logo_pacifico.png",
+            "Mapfre": "logo_mapfre.png",
+            "Protecta": "logo_protecta.png",
+            "La Positiva": "logo_positiva.png"
+        }
         ruta_logo = mapa_logos.get(cia, "")
         if ruta_logo and os.path.exists(ruta_logo):
-            celda_cia = Table([[ImageRL(ruta_logo, width=2.3*cm, height=0.75*cm, kind='proportional')]], colWidths=[3.0*cm])
-            celda_cia.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER'), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
-        else: celda_cia = Paragraph(f"<b>{cia}</b>", st_td_c)
+            # Solo mostramos el logo centrado sin texto redundante
+            t_lg = Table([[ImageRL(ruta_logo, width=2.3*cm, height=0.75*cm, kind='proportional')]], colWidths=[3.0*cm])
+            t_lg.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER'), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
+            celda_cia.append(t_lg)
+        else:
+            celda_cia.append(Paragraph(f"<font color='#03318e'><b>{cia}</b></font>", st_td_c))
 
-        data_tabla.append([celda_cia, Paragraph(f"S/ {row['Bruto_Mensual']:,.2f}", st_td_c), Paragraph(f"S/ {row['Bruto_Trimestral']:,.2f}", st_td_c), Paragraph(f"S/ {row['Bruto_Semestral']:,.2f}", st_td_c), Paragraph(f"<font color='#089685' size='8'><b>S/ {row['Bruto_Anual']:,.2f}</b></font>", st_td_c)])
-    
-    t_ofertas = Table(data_tabla, colWidths=[4.0*cm, 3.5*cm, 3.5*cm, 3.5*cm, 3.5*cm], repeatRows=1)
-    estilos_tabla = [('BACKGROUND', (0,0), (-1,0), AZUL_CORP), ('GRID', (0,0), (-1,-1), 0.5, BORDE_SUAVE), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('PADDING', (0,0), (-1,-1), 5)]
-    if len(df_res) > 0: estilos_tabla.extend([('BACKGROUND', (0,1), (-1,1), colors.HexColor("#F0F6FF")), ('BOX', (0,1), (-1,1), 1.5, AZUL_CORP)])
+        tag_m = "<br/><font size='6' color='#666666'>(Prima Mínima)</font>" if row['Min_M'] else ""
+        txt_m = f"<b>S/ {row['Bruto_Mensual']:,.2f}</b>{tag_m}"
+
+        tag_t = "<br/><font size='6' color='#666666'>(Prima Mínima)</font>" if row['Min_T'] else ""
+        txt_t = f"<b>S/ {row['Bruto_Trimestral']:,.2f}</b>{tag_t}"
+
+        tag_s = "<br/><font size='6' color='#666666'>(Prima Mínima)</font>" if row['Min_S'] else ""
+        txt_s = f"<b>S/ {row['Bruto_Semestral']:,.2f}</b>{tag_s}"
+
+        tag_a = "<br/><font size='6' color='#666666'>(Prima Mínima)</font>" if row['Min_A'] else ""
+        txt_a = f"<font color='#089685' size='9'><b>S/ {row['Bruto_Anual']:,.2f}</b></font>{tag_a}"
+
+        # Enlace profundo compatible con WhatsApp Business
+        msg_wa = f"Hola YQ, revisé mi cotización {folio} de Vida Ley para {datos['razon_social']} y deseo emitir con {cia} (Anual: S/ {row['Bruto_Anual']:,.2f} / Mensual: S/ {row['Bruto_Mensual']:,.2f})."
+        link_wa = f"https://api.whatsapp.com/send?phone=51906462225&text={urllib.parse.quote(msg_wa)}"
+        txt_accion = f"<a href='{link_wa}' color='#089685'><font size='7.5'><b>► EMITIR<br/>PÓLIZA</b></font></a>"
+
+        data_tabla.append([
+            celda_cia,
+            Paragraph(txt_m, st_td_c),
+            Paragraph(txt_t, st_td_c),
+            Paragraph(txt_s, st_td_c),
+            Paragraph(txt_a, st_td_c),
+            Paragraph(txt_accion, st_td_c)
+        ])
+
+    t_ofertas = Table(data_tabla, colWidths=anchos, repeatRows=1)
+    estilos_tabla = [
+        ('BACKGROUND', (0,0), (-1,0), AZUL_CORP),
+        ('GRID', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('PADDING', (0,0), (-1,-1), 5)
+    ]
+    if len(df_res) > 0:
+        estilos_tabla.extend([
+            ('BACKGROUND', (0,1), (-1,1), AZUL_CLARO),
+            ('BOX', (0,1), (-1,1), 1.5, AZUL_CORP)
+        ])
     t_ofertas.setStyle(TableStyle(estilos_tabla))
-    elements.extend([t_ofertas, Spacer(1, 8)])
+    elements.append(t_ofertas)
+    elements.append(Spacer(1, 5))
 
+    # Nota condicional de Prima Mínima
+    algun_minimo = any(row['Min_M'] or row['Min_T'] or row['Min_S'] or row['Min_A'] for _, row in df_res.iterrows())
+    if algun_minimo:
+        nota_min = (
+            "<b>* Nota sobre Prima Mínima:</b> Los importes mostrados incluyen el 18% de IGV. Cuando un monto indica <i>(Prima Mínima)</i>, "
+            "significa que la planilla declarada activa la tarifa mínima de emisión de la aseguradora para esa frecuencia. "
+            "En planillas pequeñas, elegir el <b>Pago Anual Único</b> genera un ahorro de hasta el 75% frente a realizar 12 pagos mensuales."
+        )
+        elements.append(Paragraph(nota_min, ParagraphStyle('NM', parent=st_norm, fontSize=7, textColor=colors.HexColor("#555555"))))
+        elements.append(Spacer(1, 8))
+
+    # --- 4. COBERTURAS DE LEY Y BENEFICIARIOS ---
+    elements.append(Paragraph("3. COBERTURAS OBLIGATORIAS DE LEY (D.L. N° 688 Y LEY N° 29549)", st_sub))
+    
+    cob_izq = (
+        "<b>INDEMNIZACIONES PRINCIPALES (DESDE EL 1ER DÍA):</b><br/>"
+        "• <b>Muerte Natural:</b> 16 Remuneraciones mensuales asegurables.<br/>"
+        "• <b>Muerte Accidental:</b> 32 Remuneraciones mensuales asegurables.<br/>"
+        "• <b>Invalidez Total y Permanente por Accidente:</b> 32 Remuneraciones mensuales asegurables.<br/>"
+        "• <b>Coberturas Adicionales Incluidas:</b> Gastos de sepelio, desgravamen, cáncer, infarto, quemaduras y accidentes graves (según plan de cada compañía hasta los 65 años)."
+    )
+    cob_der = (
+        "<b>BENEFICIARIOS LEGALES Y REGLAS DE PLANILLA:</b><br/>"
+        "• <b>1er Orden:</b> Cónyuge o conviviente e hijos (sin restricción de edad).<br/>"
+        "• <b>2do Orden (A falta de los anteriores):</b> Ascendientes (padres) y hermanos menores de 18 años.<br/>"
+        "• <b>Remuneración Asegurable:</b> Sueldo habitual en planilla hasta el tope máximo del SPP (excluye gratificaciones y utilidades).<br/>"
+        "• <b>Obligación del Empleador:</b> Recabar la Declaración Jurada de Beneficiarios firmada por cada trabajador."
+    )
+    t_cob = Table([[Paragraph(cob_izq, st_td), Paragraph(cob_der, st_td)]], colWidths=[9.0*cm, 9.0*cm])
+    t_cob.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), GRIS_FONDO),
+        ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('PADDING', (0,0), (-1,-1), 6)
+    ]))
+    elements.append(t_cob)
+    elements.append(Spacer(1, 8))
+
+    # --- 5. EXCLUSIONES Y CONDICIONES ---
+    excl_txt = (
+        "<b>CONSIDERACIONES Y EXCLUSIONES PRINCIPALES:</b><br/>"
+        "• Queda excluido el suicidio o intento de suicidio, así como lesiones o fallecimiento causados intencionalmente o por acto doloso.<br/>"
+        "• Seguro nominativo: requiere el envío de la trama/relación nominal de trabajadores (DNI, nombres, fecha de nacimiento y sueldo) antes del inicio de vigencia.<br/>"
+        "• Las tasas para trabajadores mayores de 70 años son referenciales y están sujetas a evaluación especial de suscripción."
+    )
+    t_excl = Table([[Paragraph(excl_txt, st_td)]], colWidths=[18.0*cm])
+    t_excl.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#F0F4F8")),
+        ('LINELEFT', (0,0), (-1,-1), 2, AZUL_CORP),
+        ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
+        ('PADDING', (0,0), (-1,-1), 6)
+    ]))
+    elements.append(t_excl)
+    elements.append(Spacer(1, 8))
+
+    # --- 6. ANÁLISIS DEL EXPERTO ---
     if razon_experto:
-        elements.append(Paragraph("3. ANÁLISIS DEL EXPERTO", st_sub))
-        t_box = Table([[Paragraph(f"{razon_experto}", st_norm)]], colWidths=[18.0*cm])
-        t_box.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), GRIS_FONDO), ('LINELEFT', (0,0), (-1,-1), 2, AZUL_CORP), ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE), ('PADDING', (0,0), (-1,-1), 6)]))
+        elements.append(Paragraph("4. ANÁLISIS Y RECOMENDACIÓN DEL EXPERTO", st_sub))
+        elements.append(Spacer(1, 3))
+        t_box = Table([[Paragraph(f"<b>ESTRATEGIA RECOMENDADA:</b><br/>{razon_experto}", st_norm)]], colWidths=[18.0*cm])
+        t_box.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), GRIS_FONDO),
+            ('LINELEFT', (0,0), (-1,-1), 2, AZUL_CORP),
+            ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
+            ('PADDING', (0,0), (-1,-1), 6)
+        ]))
         elements.append(t_box)
+        elements.append(Spacer(1, 8))
+
+    footer_txt = "<b>YQ CORREDORES DE SEGUROS (Código SBS N5410 | RUC 10421076184):</b> <i>Emisión inmediata de pólizas y constancias Vida Ley, gestión de tramas y defensa ante siniestros.</i>"
+    elements.append(Paragraph(footer_txt, ParagraphStyle('FT', parent=st_norm, fontSize=7.5, textColor=AZUL_CORP, alignment=1)))
 
     doc.build(elements)
     buffer.seek(0)
