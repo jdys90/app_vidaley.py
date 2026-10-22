@@ -280,7 +280,6 @@ def generar_pdf_vidaley(datos, df_res, folio, razon_experto=""):
         }
         ruta_logo = mapa_logos.get(cia, "")
         if ruta_logo and os.path.exists(ruta_logo):
-            # Solo mostramos el logo centrado sin texto redundante
             t_lg = Table([[ImageRL(ruta_logo, width=2.3*cm, height=0.75*cm, kind='proportional')]], colWidths=[3.0*cm])
             t_lg.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER'), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
             celda_cia.append(t_lg)
@@ -299,7 +298,6 @@ def generar_pdf_vidaley(datos, df_res, folio, razon_experto=""):
         tag_a = "<br/><font size='6' color='#666666'>(Prima Mínima)</font>" if row['Min_A'] else ""
         txt_a = f"<font color='#089685' size='9'><b>S/ {row['Bruto_Anual']:,.2f}</b></font>{tag_a}"
 
-        # Enlace profundo compatible con WhatsApp Business
         msg_wa = f"Hola YQ, revisé mi cotización {folio} de Vida Ley para {datos['razon_social']} y deseo emitir con {cia} (Anual: S/ {row['Bruto_Anual']:,.2f} / Mensual: S/ {row['Bruto_Mensual']:,.2f})."
         link_wa = f"https://api.whatsapp.com/send?phone=51906462225&text={urllib.parse.quote(msg_wa)}"
         txt_accion = f"<a href='{link_wa}' color='#089685'><font size='7.5'><b>► EMITIR<br/>PÓLIZA</b></font></a>"
@@ -329,7 +327,6 @@ def generar_pdf_vidaley(datos, df_res, folio, razon_experto=""):
     elements.append(t_ofertas)
     elements.append(Spacer(1, 5))
 
-    # Nota condicional de Prima Mínima (solo aparece si alguna opción activó prima mínima)
     algun_minimo = any(row['Min_M'] or row['Min_T'] or row['Min_S'] or row['Min_A'] for _, row in df_res.iterrows())
     if algun_minimo:
         nota_min = (
@@ -423,7 +420,6 @@ def cargar_tarifario_vidaley():
         df_h1.columns = df_h1.columns.str.strip()
         df_h2.columns = df_h2.columns.str.strip()
         
-        # Limpiamos espacios dobles o finales en ACTIVIDAD y RANGO DE EDAD
         df_h1['ACTIVIDAD_CLEAN'] = df_h1['ACTIVIDAD'].astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
         df_h1['RANGO_CLEAN'] = df_h1['RANGO DE EDAD'].astype(str).str.strip()
         df_h2['Concepto_Clean'] = df_h2['Concepto'].astype(str).str.strip()
@@ -441,7 +437,6 @@ def cotizar_vidaley(actividad_clean, categoria_sel, planilla_por_rango):
     if sub_df.empty:
         return pd.DataFrame()
 
-    # Mapeo de columnas según la categoría elegida
     mapa_columnas = {
         "Empleado (Administrativo / Oficina)": {
             "Mapfre": "MAPFRE: EMPLEADO",
@@ -470,9 +465,8 @@ def cotizar_vidaley(actividad_clean, categoria_sel, planilla_por_rango):
         if col_tasa not in sub_df.columns or cia not in df_h2.columns:
             continue
 
-        # Extraer Impuesto y Primas Mínimas Netas desde Hoja2
         try:
-            imp_ serie = df_h2[df_h2['Concepto_Clean'].str.contains('Impuesto', case=False, na=False)][cia]
+            imp_serie = df_h2[df_h2['Concepto_Clean'].str.contains('Impuesto', case=False, na=False)][cia]
             imp = float(imp_serie.iloc[0]) if not imp_serie.empty and pd.notna(imp_serie.iloc[0]) else 0.18
 
             def get_min(palabra):
@@ -486,7 +480,6 @@ def cotizar_vidaley(actividad_clean, categoria_sel, planilla_por_rango):
         except Exception:
             continue
 
-        # Calculamos la prima neta mensual sumando (Planilla del Rango * Tasa del Rango)
         prima_neta_mensual_calc = 0.0
         planilla_total = 0.0
         for rango, monto_planilla in planilla_por_rango.items():
@@ -502,7 +495,6 @@ def cotizar_vidaley(actividad_clean, categoria_sel, planilla_por_rango):
 
         tasa_ponderada_pct = (prima_neta_mensual_calc / planilla_total) * 100.0
 
-        # Evaluación contra primas mínimas netas por cada frecuencia
         neto_m = max(prima_neta_mensual_calc * 1.0, min_m)
         neto_t = max(prima_neta_mensual_calc * 3.0, min_t)
         neto_s = max(prima_neta_mensual_calc * 6.0, min_s)
@@ -523,7 +515,6 @@ def cotizar_vidaley(actividad_clean, categoria_sel, planilla_por_rango):
 
     df_out = pd.DataFrame(resultados)
     if not df_out.empty:
-        # Ordenamos por la mejor oferta Anual y luego Mensual
         df_out = df_out.sort_values(by=["Bruto_Anual", "Bruto_Mensual"], ascending=[True, True]).reset_index(drop=True)
     return df_out
 
@@ -555,15 +546,30 @@ es_admin = (codigo_actual == CODIGO_ADMIN or codigo_actual in CODIGOS_ASESORES)
 if df_h1 is None:
     st.error("❌ No se encontró el archivo 'tarifario_vidaley.xlsx' en el repositorio.")
 else:
+    # --- LECTURA INTELIGENTE DE DATOS CRUZADOS (CROSS-SELLING) ---
+    razon_url = st.query_params.get("razon", "")
+    ruc_url = st.query_params.get("ruc", "")
+    cel_url = st.query_params.get("cel", "")
+    mail_url = st.query_params.get("mail", "")
+    trab_url = st.query_params.get("trab", "1")
+
+    try:
+        trab_default = max(1, int(trab_url))
+    except:
+        trab_default = 1
+
+    if razon_url:
+        st.info(f"⚡ **¡Hola {razon_url}!** Hemos cargado automáticamente los datos de tu empresa para que cotices en un solo clic.")
+
     st.markdown("<h3 style='color: #03318e; font-weight: 700; margin-bottom: 10px;'>1. Datos de la Empresa / Contratante</h3>", unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     with col1:
-        razon_social = st.text_input("Razón Social o Nombre Completo", placeholder="Ej: Constructora Peruana SAC")
-        ruc = st.text_input("RUC o DNI", max_chars=11, placeholder="Ej: 20601234567 o 40123456")
+        razon_social = st.text_input("Razón Social o Nombre Completo", value=razon_url, placeholder="Ej: Constructora Peruana SAC")
+        ruc = st.text_input("RUC o DNI", value=ruc_url, max_chars=11, placeholder="Ej: 20601234567 o 40123456")
     with col2:
-        celular = st.text_input("Celular / WhatsApp", max_chars=9, placeholder="Ej: 999123456")
-        email = st.text_input("Correo Electrónico", placeholder="rrhh@empresa.com")
+        celular = st.text_input("Celular / WhatsApp", value=cel_url, max_chars=9, placeholder="Ej: 999123456")
+        email = st.text_input("Correo Electrónico", value=mail_url, placeholder="rrhh@empresa.com")
 
     st.markdown("<h3 style='color: #03318e; font-weight: 700; margin-top: 15px; margin-bottom: 10px;'>2. Actividad y Perfil de Trabajadores</h3>", unsafe_allow_html=True)
     
@@ -577,14 +583,12 @@ else:
             "Obrero (Operativo Estándar)",
             "Obrero Alto Riesgo (Construcción / Planta / Mina)"
         ]
-        # Si elige Construcción o Seguridad, sugerimos por defecto Obrero Alto Riesgo
         idx_cat_def = 2 if any(k in actividad_sel for k in ["Construcción", "Seguridad", "Transporte"]) else (0 if "Oficinas" in actividad_sel else 1)
         categoria_sel = st.selectbox("Categoría de Trabajadores", categorias_lista, index=idx_cat_def)
 
     st.markdown("<h3 style='color: #03318e; font-weight: 700; margin-top: 15px; margin-bottom: 5px;'>3. Distribución por Rango de Edad y Planilla</h3>", unsafe_allow_html=True)
     st.caption(f"*Ingresa la cantidad de trabajadores por rango de edad. El sistema sugiere automáticamente la planilla mínima legal (S/ {RMV_VIGENTE:,.2f} por trabajador), la cual puedes editar si ganan más.*")
 
-    # Rangos principales (18-36, 37-55, 56-63)
     rangos_principales = ["18-36", "37-55", "56-63"]
     trabajadores_rango = {}
     planilla_rango = {}
@@ -592,7 +596,7 @@ else:
     cols_r = st.columns(3)
     for i, r_edad in enumerate(rangos_principales):
         with cols_r[i]:
-            val_def = 1 if i == 0 else 0
+            val_def = trab_default if i == 0 else 0
             n_t = st.number_input(f"N° Trab. ({r_edad} años)", min_value=0, max_value=5000, value=val_def, key=f"nt_{r_edad}")
             trabajadores_rango[r_edad] = n_t
             if n_t > 0:
@@ -602,7 +606,6 @@ else:
             else:
                 planilla_rango[r_edad] = 0.0
 
-    # Rangos senior opcionales (64-70, 71-80, 81-110) para no saturar la vista
     with st.expander("➕ ¿Tienes trabajadores mayores de 64 años? (Clic aquí para agregarlos)"):
         cols_s = st.columns(3)
         for i, r_edad in enumerate(["64-70", "71-80", "81-110"]):
@@ -622,7 +625,6 @@ else:
     if total_trab > 0:
         st.info(f"📊 **Resumen a cotizar:** {total_trab} trabajador(es) | **Planilla Mensual Total:** S/ {total_planilla:,.2f}")
 
-    # Aviso amigable para actividades especiales
     msg_esp = "Hola YQ, estoy en el cotizador de Vida Ley y deseo cotizar una actividad especial o planilla corporativa."
     link_esp = f"https://api.whatsapp.com/send?phone=51906462225&text={urllib.parse.quote(msg_esp)}"
     st.markdown(f"<div style='font-size: 0.88rem; color: #555;'>💡 ¿Tu empresa realiza actividades mineras, petróleo o no encuentras tu giro? <a href='{link_esp}' target='_blank' style='color: #089685; font-weight: 700; text-decoration: underline;'>Cotiza directo por WhatsApp aquí</a>.</div>", unsafe_allow_html=True)
@@ -686,7 +688,6 @@ else:
 
             opciones_cias = df_res['Aseguradora'].tolist()
             
-            # Cálculo de ahorro anual vs 12 pagos mensuales para nutrir el Análisis del Experto
             top_row = df_res.iloc[0]
             costo_12_meses = top_row['Bruto_Mensual'] * 12
             ahorro_anual = max(0.0, costo_12_meses - top_row['Bruto_Anual'])
@@ -745,6 +746,45 @@ else:
                         Emitir Póliza por WhatsApp
                     </a>
                 """, unsafe_allow_html=True)
+
+            # --- BLOQUE DE VENTA CRUZADA: DE VIDA LEY A SCTR ---
+            st.markdown("<br>", unsafe_allow_html=True)
+            URL_DESTINO_SCTR = "https://yqcorredores.com/seguro-sctr/" 
+            params_cruzados = urllib.parse.urlencode({
+                "razon": datos['razon_social'],
+                "ruc": datos['ruc'],
+                "cel": datos['celular'],
+                "mail": datos['email'],
+                "trab": datos['trabajadores'],
+                "planilla": datos['planilla']
+            })
+            link_cruzado_sctr = f"{URL_DESTINO_SCTR}?{params_cruzados}"
+            
+            msg_pack = (
+                f"Hola YQ, acabo de cotizar el Seguro Vida Ley ({folio}) para {datos['razon_social']} (RUC: {datos['ruc']}) "
+                f"con {mejor_cia} y deseo emitir también el SCTR Salud y Pensión para mis {datos['trabajadores']} trabajadores."
+            )
+            link_wa_pack = f"https://api.whatsapp.com/send?phone=51906462225&text={urllib.parse.quote(msg_pack)}"
+
+            st.markdown(f"""
+                <div style="background-color: #F0F6FF; border: 1.5px solid #03318e; border-radius: 10px; padding: 18px; margin-top: 10px;">
+                    <h4 style="color: #03318e; margin-top: 0; margin-bottom: 6px; font-weight: 800; font-size: 1.05rem;">
+                        🏗️ ¿Tu personal realiza labores operativas o de campo y necesita SCTR?
+                    </h4>
+                    <p style="color: #3c3c3c; font-size: 0.9rem; margin-bottom: 14px; line-height: 1.4;">
+                        Si tus trabajadores ingresan a obras, plantas industriales, almacenes o minas, necesitan contar con <b>SCTR Salud y Pensión</b> activo. 
+                        Cotízalo con tus datos ya cargados o pídelos juntos por WhatsApp:
+                    </p>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <a href="{link_cruzado_sctr}" target="_blank" style="flex: 1; min-width: 220px; text-align: center; background-color: #03318e; color: white; padding: 11px 15px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px;">
+                            ⚡ Cotizar SCTR en 1 Clic
+                        </a>
+                        <a href="{link_wa_pack}" target="_blank" style="flex: 1; min-width: 220px; text-align: center; background-color: #089685; color: white; padding: 11px 15px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px;">
+                            📦 Solicitar Pack Vida Ley + SCTR
+                        </a>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
 # ==========================================
 # 6. PIE DE PÁGINA: ACCESO ADMIN
