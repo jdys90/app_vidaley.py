@@ -413,6 +413,8 @@ else:
                 st.session_state['ver_sctr'] = ver_sctr
                 
                 if ver_sctr:
+                df_sctr_base, df_sctr_minimos = cargar_tarifario_sctr_addon()
+                if df_sctr_base is not None and df_sctr_minimos is not None:
                     st.markdown("<div style='padding: 15px; border: 1px solid #DEE2E6; border-radius: 8px; margin-top: 10px;'>", unsafe_allow_html=True)
                     c_s1, c_s2 = st.columns(2)
                     with c_s1:
@@ -423,7 +425,8 @@ else:
                         act_sctr_sel = st.selectbox("Actividad Específica (CIIU):", acts_sctr, key="addon_act_sctr")
                     
                     if st.button("Calcular SCTR", use_container_width=True, key="btn_calc_sctr"):
-                        df_res_sctr = calcular_sctr_addon(df_sctr_base, rubro_sctr_sel, act_sctr_sel, datos['planilla'])
+                        df_res_sctr = calcular_sctr_addon(df_sctr_base, df_sctr_minimos, rubro_sctr_sel, act_sctr_sel, datos['planilla'])
+                        
                         if not df_res_sctr.empty:
                             st.session_state['res_sctr_addon'] = df_res_sctr
                             st.session_state['cia_sctr_addon'] = df_res_sctr.iloc[0]['Aseguradora SCTR']
