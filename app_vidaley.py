@@ -450,7 +450,7 @@ def cotizar_vidaley(actividad_clean, categoria_sel, planilla_por_rango):
             "Protecta": "PROTECTA: OBRERO",
             "Rímac": "RIMAC PLAN BASE - OBREROS"
         },
-        "Obrero Alto Riesgo (Construcción / Planta / Mina)": {
+        "Obrero Alto Riesgo (Construcción / Planta)": {
             "Mapfre": "MAPFRE: OBRERO ALTO RIESGO",
             "Pacífico": "PACIFICO: OBRERO ALTO RIESGO",
             "Protecta": "PROTECTA: OBRERO ALTO RIESGO",
