@@ -767,10 +767,9 @@ else:
                 
                 import streamlit.components.v1 as components
                 
-                # 👇 REEMPLAZA ESTA URL CON EL ENLACE REAL DE TU APLICACIÓN DE SCTR EN STREAMLIT
-                URL_APP_SCTR = "https://cotizador-sctr-yq.streamlit.app" 
+                # REEMPLAZA ESTA URL CON EL ENLACE REAL DE TU APLICACIÓN DE SCTR EN STREAMLIT
+                URL_APP_SCTR = "https://TU-APP-SCTR-AQUI.streamlit.app" 
                 
-                # Empaquetamos los datos de Vida Ley para enviarlos invisiblemente al SCTR
                 params_cruzados = urllib.parse.urlencode({
                     "razon": datos['razon_social'],
                     "ruc": datos['ruc'],
@@ -782,35 +781,7 @@ else:
                 })
                 
                 url_iframe = f"{URL_APP_SCTR}/?embed=true&{params_cruzados}"
-                
-                # Incrustamos la otra aplicación nativamente
-                components.iframe(url_iframe, height=900, scrolling=True)            
-            msg_pack = (
-                f"Hola YQ, acabo de cotizar el Seguro Vida Ley ({folio}) para {datos['razon_social']} (RUC: {datos['ruc']}) "
-                f"con {mejor_cia} y deseo emitir también el SCTR Salud y Pensión para mis {datos['trabajadores']} trabajadores."
-            )
-            link_wa_pack = f"https://api.whatsapp.com/send?phone=51906462225&text={urllib.parse.quote(msg_pack)}"
-
-            st.markdown(f"""
-                <div style="background-color: #F0F6FF; border: 1.5px solid #03318e; border-radius: 10px; padding: 18px; margin-top: 10px;">
-                    <h4 style="color: #03318e; margin-top: 0; margin-bottom: 6px; font-weight: 800; font-size: 1.05rem;">
-                        🏗️ ¿Tu personal realiza labores operativas o de campo y necesita SCTR?
-                    </h4>
-                    <p style="color: #3c3c3c; font-size: 0.9rem; margin-bottom: 14px; line-height: 1.4;">
-                        Si tus trabajadores ingresan a obras, plantas industriales, almacenes o minas, necesitan contar con <b>SCTR Salud y Pensión</b> activo. 
-                        Cotízalo con tus datos ya cargados o pídelos juntos por WhatsApp:
-                    </p>
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        <a href="{link_cruzado_sctr}" target="_blank" style="flex: 1; min-width: 220px; text-align: center; background-color: #03318e; color: white; padding: 11px 15px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px;">
-                            ⚡ Cotizar SCTR en 1 Clic
-                        </a>
-                        <a href="{link_wa_pack}" target="_blank" style="flex: 1; min-width: 220px; text-align: center; background-color: #089685; color: white; padding: 11px 15px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px;">
-                            📦 Solicitar Pack Vida Ley + SCTR
-                        </a>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-
+                components.iframe(url_iframe, height=900, scrolling=True)
 # ==========================================
 # 6. PIE DE PÁGINA: ACCESO ADMIN
 # ==========================================
