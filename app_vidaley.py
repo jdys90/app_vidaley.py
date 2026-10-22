@@ -247,7 +247,7 @@ def calcular_sctr_addon(df_sctr, df_minimos, rubro_sel, act_sel, planilla_total)
         ("Rímac", "Tasa_Salud_Rimac", "Rímac Salud", "Tasa_Pension_Rimac", "Rímac Pens"),
         ("Pacífico", "Tasa_Salud_Pacifico", "Pacífico Salu", "Tasa_Pension_Pacifico", "Pacífico Pens"),
         ("Mapfre", "Tasa_Salud_Mapfre", "Mapfre Salu", "Tasa_Pension_Mapfre", "Mapfre Pensi"),
-        ("Sanitas + Protecta", "Tasa_Salud_Sanitas", "Sanitas Salu", "Tasa_Pension_Protecta", "Protecta Pensión")
+        ("Sanitas + Protecta", "Tasa_Salud_Sanitas", "Sanitas Salu", "Tasa_Pension_Protecta", "Protecta Pensión") # <- Ajuste exacto de Protecta
     ]
     
     res = []
@@ -322,12 +322,16 @@ def generar_pdf_vidaley(datos, df_res, folio, razon_experto="", df_sctr_opcional
 
     # --- 2. DATOS DEL CONTRATANTE Y PLANILLA ---
     elements.append(Paragraph("1. INFORMACIÓN DEL CONTRATANTE Y PLANILLA ASEGURABLE", st_sub))
+    
+    # Arreglo para que las edades salgan línea por línea en el PDF
+    edades_br = datos['resumen_edades'].replace(", ", "<br/>")
+    
     data_cliente = [
         [Paragraph("<b>Contratante:</b>", st_bold), Paragraph(datos['razon_social'], st_norm),
          Paragraph("<b>RUC / DNI:</b>", st_bold), Paragraph(datos['ruc'], st_norm)],
         [Paragraph("<b>Actividad:</b>", st_bold), Paragraph(datos['actividad'], st_norm),
          Paragraph("<b>N° Trabajadores:</b>", st_bold), Paragraph(f"{datos['trabajadores']} asegurados ({datos['categoria']})", st_norm)],
-        [Paragraph("<b>Distribución Etaria:</b>", st_bold), Paragraph(datos['resumen_edades'], st_norm),
+        [Paragraph("<b>Distribución<br/>Etaria:</b>", st_bold), Paragraph(edades_br, st_norm),
          Paragraph("<b>Planilla Mensual:</b>", st_bold), Paragraph(f"<b>S/ {datos['planilla']:,.2f}</b>", st_norm)]
     ]
     t_cli = Table(data_cliente, colWidths=[3.0*cm, 7.5*cm, 3.0*cm, 4.5*cm])
@@ -357,8 +361,7 @@ def generar_pdf_vidaley(datos, df_res, folio, razon_experto="", df_sctr_opcional
         cia = str(row['Aseguradora'])
 
         celda_cia = []
-        if es_mejor:
-            celda_cia.append(Paragraph("<b>► MEJOR OPCIÓN</b>", st_rec))
+        if es_mejor: celda_cia.append(Paragraph("<b>► MEJOR OPCIÓN</b>", st_rec))
 
         mapa_logos = {"Rímac": "logo_rimac.png", "Pacífico": "logo_pacifico.png", "Mapfre": "logo_mapfre.png", "Protecta": "logo_protecta.png", "La Positiva": "logo_positiva.png"}
         ruta_logo = mapa_logos.get(cia, "")
@@ -370,7 +373,6 @@ def generar_pdf_vidaley(datos, df_res, folio, razon_experto="", df_sctr_opcional
             celda_cia.append(Paragraph(f"<font color='#03318e'><b>{cia}</b></font>", st_td_c))
 
         if df_sctr_opcional is not None:
-            # Buscar coincidencia en SCTR
             cia_sctr_search = "Sanitas + Protecta" if cia == "Protecta" else cia
             match_sctr = df_sctr_opcional[df_sctr_opcional['Aseguradora SCTR'] == cia_sctr_search]
             sctr_mensual = match_sctr.iloc[0]['Total Mensual SCTR'] if not match_sctr.empty else 0.0
@@ -392,100 +394,42 @@ def generar_pdf_vidaley(datos, df_res, folio, razon_experto="", df_sctr_opcional
         link_wa = f"https://api.whatsapp.com/send?phone=51906462225&text={urllib.parse.quote('Hola YQ, deseo emitir póliza')}"
         txt_accion = f"<a href='{link_wa}' color='#089685'><font size='7.5'><b>► EMITIR<br/>PÓLIZA</b></font></a>"
 
-        data_tabla.append([
-            celda_cia,
-            Paragraph(txt_m, st_td_c),
-            Paragraph(txt_t, st_td_c),
-            Paragraph(txt_s, st_td_c),
-            Paragraph(txt_a, st_td_c),
-            Paragraph(txt_accion, st_td_c)
-        ])
-
+        data_tabla.append([celda_cia, Paragraph(txt_m, st_td_c), Paragraph(txt_t, st_td_c), Paragraph(txt_s, st_td_c), Paragraph(txt_a, st_td_c), Paragraph(txt_accion, st_td_c)])
+    
     t_ofertas = Table(data_tabla, colWidths=anchos, repeatRows=1)
-    estilos_tabla = [
-        ('BACKGROUND', (0,0), (-1,0), AZUL_CORP),
-        ('GRID', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('PADDING', (0,0), (-1,-1), 5)
-    ]
-    if len(df_res) > 0:
-        estilos_tabla.extend([
-            ('BACKGROUND', (0,1), (-1,1), AZUL_CLARO),
-            ('BOX', (0,1), (-1,1), 1.5, AZUL_CORP)
-        ])
+    estilos_tabla = [('BACKGROUND', (0,0), (-1,0), AZUL_CORP), ('GRID', (0,0), (-1,-1), 0.5, BORDE_SUAVE), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('PADDING', (0,0), (-1,-1), 5)]
+    if len(df_res) > 0: estilos_tabla.extend([('BACKGROUND', (0,1), (-1,1), AZUL_CLARO), ('BOX', (0,1), (-1,1), 1.5, AZUL_CORP)])
     t_ofertas.setStyle(TableStyle(estilos_tabla))
     elements.append(t_ofertas)
     elements.append(Spacer(1, 5))
 
-    # Recomendación del Experto ubicada como Punto 3
+    # --- 4. RECOMENDACIÓN DEL EXPERTO (PUNTO 3) ---
     if razon_experto:
         elements.append(Paragraph("3. ANÁLISIS Y RECOMENDACIÓN DEL EXPERTO", st_sub))
         elements.append(Spacer(1, 3))
         t_box = Table([[Paragraph(f"<b>ESTRATEGIA RECOMENDADA:</b><br/>{razon_experto}", st_norm)]], colWidths=[18.0*cm])
-        t_box.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,-1), GRIS_FONDO),
-            ('LINELEFT', (0,0), (-1,-1), 2, AZUL_CORP),
-            ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
-            ('PADDING', (0,0), (-1,-1), 6)
-        ]))
-        elements.append(t_box)
-        elements.append(Spacer(1, 8))
+        t_box.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), GRIS_FONDO), ('LINELEFT', (0,0), (-1,-1), 2, AZUL_CORP), ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE), ('PADDING', (0,0), (-1,-1), 6)]))
+        elements.extend([t_box, Spacer(1, 8)])
 
-    if not df_sctr_opcional is not None:
+    if df_sctr_opcional is None:
         algun_minimo = any(row['Min_M'] or row['Min_T'] or row['Min_S'] or row['Min_A'] for _, row in df_res.iterrows())
         if algun_minimo:
-            nota_min = (
-                "<b>* Nota sobre Prima Mínima:</b> Los importes mostrados incluyen el 18% de IGV. Cuando un monto indica <i>(Prima Mínima)</i>, "
-                "significa que la planilla declarada activa la tarifa mínima de emisión de la aseguradora para esa frecuencia. "
-                "En planillas pequeñas, elegir el <b>Pago Anual Único</b> genera un ahorro de hasta el 75% frente a realizar 12 pagos mensuales."
-            )
+            nota_min = "<b>* Nota sobre Prima Mínima:</b> Los importes mostrados incluyen el 18% de IGV. Cuando un monto indica <i>(Prima Mínima)</i>, significa que la planilla declarada activa la tarifa mínima de emisión de la aseguradora para esa frecuencia. En planillas pequeñas, elegir el <b>Pago Anual Único</b> genera un ahorro de hasta el 75% frente a realizar 12 pagos mensuales."
             elements.append(Paragraph(nota_min, ParagraphStyle('NM', parent=st_norm, fontSize=7, textColor=colors.HexColor("#555555"))))
             elements.append(Spacer(1, 8))
 
-    # --- 4. COBERTURAS DE LEY Y BENEFICIARIOS ---
+    # --- 5. COBERTURAS Y REGLAS (PUNTO 4) ---
     elements.append(Paragraph("4. COBERTURAS OBLIGATORIAS DE LEY (D.L. N° 688 Y LEY N° 29549)", st_sub))
-    
-    cob_izq = (
-        "<b>INDEMNIZACIONES PRINCIPALES (DESDE EL 1ER DÍA):</b><br/>"
-        "• <b>Muerte Natural:</b> 16 Remuneraciones mensuales asegurables.<br/>"
-        "• <b>Muerte Accidental:</b> 32 Remuneraciones mensuales asegurables.<br/>"
-        "• <b>Invalidez Total y Permanente por Accidente:</b> 32 Remuneraciones mensuales asegurables.<br/>"
-        "• <b>Coberturas Adicionales Incluidas:</b> Gastos de sepelio, desgravamen, cáncer, infarto, quemaduras y accidentes graves (según plan de cada compañía hasta los 65 años)."
-    )
-    cob_der = (
-        "<b>BENEFICIARIOS LEGALES Y REGLAS DE PLANILLA:</b><br/>"
-        "• <b>1er Orden:</b> Cónyuge o conviviente e hijos (sin restricción de edad).<br/>"
-        "• <b>2do Orden (A falta de los anteriores):</b> Ascendientes (padres) y hermanos menores de 18 años.<br/>"
-        "• <b>Remuneración Asegurable:</b> Sueldo habitual en planilla hasta el tope máximo del SPP (excluye gratificaciones y utilidades).<br/>"
-        "• <b>Obligación del Empleador:</b> Recabar la Declaración Jurada de Beneficiarios firmada por cada trabajador."
-    )
+    cob_izq = "<b>INDEMNIZACIONES PRINCIPALES (DESDE EL 1ER DÍA):</b><br/>• <b>Muerte Natural:</b> 16 Remuneraciones mensuales asegurables.<br/>• <b>Muerte Accidental:</b> 32 Remuneraciones mensuales asegurables.<br/>• <b>Invalidez Total y Permanente por Accidente:</b> 32 Remuneraciones mensuales asegurables.<br/>• <b>Coberturas Adicionales Incluidas:</b> Gastos de sepelio, desgravamen, cáncer, infarto, quemaduras y accidentes graves (según plan de cada compañía hasta los 65 años)."
+    cob_der = "<b>BENEFICIARIOS LEGALES Y REGLAS DE PLANILLA:</b><br/>• <b>1er Orden:</b> Cónyuge o conviviente e hijos (sin restricción de edad).<br/>• <b>2do Orden (A falta de los anteriores):</b> Ascendientes (padres) y hermanos menores de 18 años.<br/>• <b>Remuneración Asegurable:</b> Sueldo habitual en planilla hasta el tope máximo del SPP (excluye gratificaciones y utilidades).<br/>• <b>Obligación del Empleador:</b> Recabar la Declaración Jurada de Beneficiarios firmada por cada trabajador."
     t_cob = Table([[Paragraph(cob_izq, st_td), Paragraph(cob_der, st_td)]], colWidths=[9.0*cm, 9.0*cm])
-    t_cob.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), GRIS_FONDO),
-        ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('PADDING', (0,0), (-1,-1), 6)
-    ]))
-    elements.append(t_cob)
-    elements.append(Spacer(1, 8))
+    t_cob.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), GRIS_FONDO), ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE), ('INNERGRID', (0,0), (-1,-1), 0.5, BORDE_SUAVE), ('VALIGN', (0,0), (-1,-1), 'TOP'), ('PADDING', (0,0), (-1,-1), 6)]))
+    elements.extend([t_cob, Spacer(1, 8)])
 
-    # --- 5. EXCLUSIONES Y CONDICIONES ---
-    excl_txt = (
-        "<b>CONSIDERACIONES Y EXCLUSIONES PRINCIPALES:</b><br/>"
-        "• Queda excluido el suicidio o intento de suicidio, así como lesiones o fallecimiento causados intencionalmente o por acto doloso.<br/>"
-        "• Seguro nominativo: requiere el envío de la trama/relación nominal de trabajadores (DNI, nombres, fecha de nacimiento y sueldo) antes del inicio de vigencia.<br/>"
-        "• Las tasas para trabajadores mayores de 70 años son referenciales y están sujetas a evaluación especial de suscripción."
-    )
+    excl_txt = "<b>CONSIDERACIONES Y EXCLUSIONES PRINCIPALES:</b><br/>• Queda excluido el suicidio o intento de suicidio, así como lesiones o fallecimiento causados intencionalmente o por acto doloso.<br/>• Seguro nominativo: requiere el envío de la trama/relación nominal de trabajadores (DNI, nombres, fecha de nacimiento y sueldo) antes del inicio de vigencia.<br/>• Las tasas para trabajadores mayores de 70 años son referenciales y están sujetas a evaluación especial de suscripción."
     t_excl = Table([[Paragraph(excl_txt, st_td)]], colWidths=[18.0*cm])
-    t_excl.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#F0F4F8")),
-        ('LINELEFT', (0,0), (-1,-1), 2, AZUL_CORP),
-        ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
-        ('PADDING', (0,0), (-1,-1), 6)
-    ]))
-    elements.append(t_excl)
-    elements.append(Spacer(1, 8))
+    t_excl.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#F0F4F8")), ('LINELEFT', (0,0), (-1,-1), 2, AZUL_CORP), ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE), ('PADDING', (0,0), (-1,-1), 6)]))
+    elements.extend([t_excl, Spacer(1, 8)])
 
     footer_txt = "<b>YQ CORREDORES DE SEGUROS (Código SBS N5410 | RUC 10421076184):</b> <i>Emisión inmediata de pólizas y constancias Vida Ley, gestión de tramas y defensa ante siniestros.</i>"
     elements.append(Paragraph(footer_txt, ParagraphStyle('FT', parent=st_norm, fontSize=7.5, textColor=AZUL_CORP, alignment=1)))
@@ -544,14 +488,12 @@ else:
             "Obrero (Operativo Estándar)",
             "Obrero Alto Riesgo (Construcción / Planta / Mina)"
         ]
-        # Si elige Construcción o Seguridad, sugerimos por defecto Obrero Alto Riesgo
         idx_cat_def = 2 if any(k in actividad_sel for k in ["Construcción", "Seguridad", "Transporte"]) else (0 if "Oficinas" in actividad_sel else 1)
         categoria_sel = st.selectbox("Categoría de Trabajadores", categorias_lista, index=idx_cat_def)
 
     st.markdown("<h3 style='color: #03318e; font-weight: 700; margin-top: 15px; margin-bottom: 5px;'>3. Distribución por Rango de Edad y Planilla</h3>", unsafe_allow_html=True)
     st.caption(f"*Ingresa la cantidad de trabajadores por rango de edad. El sistema sugiere automáticamente la planilla mínima legal (S/ {RMV_VIGENTE:,.2f} por trabajador), la cual puedes editar si ganan más.*")
 
-    # Rangos principales (18-36, 37-55, 56-63)
     rangos_principales = ["18-36", "37-55", "56-63"]
     trabajadores_rango = {}
     planilla_rango = {}
@@ -569,7 +511,6 @@ else:
             else:
                 planilla_rango[r_edad] = 0.0
 
-    # Rangos senior opcionales (64-70, 71-80, 81-110) para no saturar la vista
     with st.expander("➕ ¿Tienes trabajadores mayores de 64 años? (Clic aquí para agregarlos)"):
         cols_s = st.columns(3)
         for i, r_edad in enumerate(["64-70", "71-80", "81-110"]):
@@ -589,7 +530,6 @@ else:
     if total_trab > 0:
         st.info(f"📊 **Resumen a cotizar:** {total_trab} trabajador(es) | **Planilla Mensual Total:** S/ {total_planilla:,.2f}")
 
-    # Aviso amigable para actividades especiales
     msg_esp = "Hola YQ, estoy en el cotizador de Vida Ley y deseo cotizar una actividad especial o planilla corporativa."
     link_esp = f"https://api.whatsapp.com/send?phone=51906462225&text={urllib.parse.quote(msg_esp)}"
     st.markdown(f"<div style='font-size: 0.88rem; color: #555;'>💡 ¿Tu empresa realiza actividades mineras, petróleo o no encuentras tu giro? <a href='{link_esp}' target='_blank' style='color: #089685; font-weight: 700; text-decoration: underline;'>Cotiza directo por WhatsApp aquí</a>.</div>", unsafe_allow_html=True)
@@ -658,7 +598,7 @@ else:
             costo_12_meses = top_row['Bruto_Mensual'] * 12
             ahorro_anual = max(0.0, costo_12_meses - top_row['Bruto_Anual'])
 
-            # --- MODO ADMIN ---
+            # --- REDACCIÓN EXACTA DEL ANÁLISIS DEL EXPERTO Y CONDICIONAL ADMIN ---
             if es_admin:
                 st.success("🔓 MODO CORREDOR ACTIVADO - Configura la recomendación para el cliente:")
                 mejor_opcion_elegida = st.selectbox("Selecciona la Aseguradora a destacar como 'Mejor Opción':", opciones_cias, index=0)
@@ -668,12 +608,9 @@ else:
                 top_row = df_res.iloc[0]
                 ahorro_anual = max(0.0, (top_row['Bruto_Mensual'] * 12) - top_row['Bruto_Anual'])
                 
-                if ahorro_anual > 10:
-                    txt_ahorro = f" Te sugerimos elegir la modalidad de Pago Anual Único (S/ {top_row['Bruto_Anual']:,.2f}), con la cual tu empresa ahorra S/ {ahorro_anual:,.2f} al año frente a realizar 12 emisiones mensuales (S/ {top_row['Bruto_Mensual']*12:,.2f})."
-                else:
-                    txt_ahorro = f" Si buscas la cuota mensual más baja para flujo de caja inmediato, también dispones de opciones desde S/ {df_res['Bruto_Mensual'].min():,.2f} al mes."
-                
+                txt_ahorro = f" Te sugerimos elegir la modalidad de Pago Anual Único (S/ {top_row['Bruto_Anual']:,.2f}), con la cual tu empresa ahorra S/ {ahorro_anual:,.2f} al año frente a realizar 12 emisiones mensuales (S/ {top_row['Bruto_Mensual']*12:,.2f})." if ahorro_anual > 10 else f" Si buscas la cuota mensual más baja para flujo de caja inmediato, también dispones de opciones desde S/ {df_res['Bruto_Mensual'].min():,.2f} al mes."
                 razon_default = f"Nuestro algoritmo ha comparado las tasas por rango etario y primas mínimas de ley para {datos['actividad']}. Destacamos a {mejor_opcion_elegida} como la alternativa de mayor eficiencia financiera.{txt_ahorro}"
+                
                 razon_admin = st.text_area("Motivo (Análisis del Experto para el PDF):", value=razon_default)
             else:
                 mejor_opcion_elegida = opciones_cias[0]
