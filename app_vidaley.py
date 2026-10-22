@@ -275,7 +275,7 @@ def generar_pdf_vidaley(datos, df_res, folio, razon_experto=""):
         "<font size='7.5' color='#666666'>Decreto Legislativo N° 688 / Ley N° 29549 / D.U. N° 044-2019 (Desde el 1er día)</font>", st_tit
     )
     fecha_str = obtener_hora_peru().strftime('%d/%m/%Y %H:%M')
-    p_folio = Paragraph(f"<font color='#3c3c3c'><b>Cotización:</b> {folio}<br/><b>Fecha:</b> {fecha_str}<br/><b>Validez:</b> 15 días</font>", ParagraphStyle('F', parent=st_norm, alignment=2))
+    p_folio = Paragraph(f"<font color='#3c3c3c'><b>Cotización:</b> {folio}<br/><b>Fecha:</b> {fecha_str}<br/><b>Validez:</b> 7 días</font>", ParagraphStyle('F', parent=st_norm, alignment=2))
 
     t_head = Table([[img_yq, p_header, p_folio]], colWidths=[3.8*cm, 9.7*cm, 4.5*cm])
     t_head.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('LINEBELOW', (0,0), (-1,-1), 1, AZUL_CORP), ('BOTTOMPADDING', (0,0), (-1,-1), 6)]))
@@ -437,15 +437,10 @@ def generar_pdf_vidaley(datos, df_res, folio, razon_experto=""):
         elements.append(Paragraph("4. ANÁLISIS Y RECOMENDACIÓN DEL EXPERTO", st_sub))
         elements.append(Spacer(1, 3))
         t_box = Table([[Paragraph(f"<b>ESTRATEGIA RECOMENDADA:</b><br/>{razon_experto}", st_norm)]], colWidths=[18.0*cm])
-        t_box.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,-1), GRIS_FONDO),
-            ('LINELEFT', (0,0), (-1,-1), 2, AZUL_CORP),
-            ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
-            ('PADDING', (0,0), (-1,-1), 6)
-        ]))
+        t_box.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), GRIS_FONDO), ('LINELEFT', (0,0), (-1,-1), 2, AZUL_CORP), ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE), ('PADDING', (0,0), (-1,-1), 6)]))
         elements.append(t_box)
         elements.append(Spacer(1, 8))
-
+       
     footer_txt = "<b>YQ CORREDORES DE SEGUROS (Código SBS N5410 | RUC 10421076184):</b> <i>Emisión inmediata de pólizas y constancias Vida Ley, gestión de tramas y defensa ante siniestros.</i>"
     elements.append(Paragraph(footer_txt, ParagraphStyle('FT', parent=st_norm, fontSize=7.5, textColor=AZUL_CORP, alignment=1)))
 
