@@ -38,28 +38,20 @@ st.markdown("""
         button[title*="fullscreen"], button[title*="Fullscreen"], [data-testid="StyledFullScreenButton"] {display: none !important;}
         .block-container { padding-bottom: 0rem !important; }
 
-        /* Botón Principal Corporativo (#03318e) */
+        /* Botones Corporativos */
         div.stButton > button {
             background-color: #03318e !important;
             color: white !important;
             border: 2px solid #03318e !important;
             border-radius: 8px !important;
             height: 48px !important;
-        }
-        div.stButton > button:hover, div.stButton > button:active, div.stButton > button:focus {
-            background-color: #022266 !important;
-            border-color: #022266 !important;
-            color: white !important;
-            box-shadow: none !important;
-        }
-        div.stButton > button, div.stButton > button * {
             font-size: 16px !important;
             font-weight: 700 !important;
-            font-family: sans-serif !important;
-            color: white !important;
         }
-
-        /* Botón Descargar PDF (#03318e) */
+        div.stButton > button:hover {
+            background-color: #022266 !important;
+            border-color: #022266 !important;
+        }
         div[data-testid="stDownloadButton"] button {
             background-color: #03318e !important; 
             color: white !important; 
@@ -67,19 +59,16 @@ st.markdown("""
             border-radius: 8px !important;
             height: 48px !important;
             width: 100% !important;
-        }
-        div[data-testid="stDownloadButton"] button:hover {
-            background-color: #022266 !important;
-            border-color: #022266 !important;
-        }
-        div[data-testid="stDownloadButton"] button, div[data-testid="stDownloadButton"] button * {
             font-size: 16px !important;
             font-weight: 700 !important;
-            font-family: sans-serif !important;
-            color: white !important;
         }
     </style>
 """, unsafe_allow_html=True)
+
+# --- CONSTANTES DE ACCESO Y NEGOCIO ---
+CODIGO_ADMIN = "ADMIN2026"
+CODIGOS_ASESORES = ["ASE01", "ASE02", "ASE03", "VENTAS2026"]
+RMV_VIGENTE = 1230.0
 
 try:
     from reportlab.lib import colors
@@ -90,11 +79,6 @@ try:
 except ImportError:
     st.error("❌ Falta la librería 'reportlab'. Asegúrate de incluirla en tu requirements.txt")
     st.stop()
-
-# --- CONSTANTES DE ACCESO Y NEGOCIO ---
-CODIGO_ADMIN = "ADMIN2026"
-CODIGOS_ASESORES = ["ASE01", "ASE02", "ASE03", "VENTAS2026"]
-RMV_VIGENTE = 1230.0
 
 def obtener_hora_peru():
     return datetime.datetime.utcnow() - timedelta(hours=5)
@@ -111,7 +95,6 @@ def get_gspread_client():
         credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         return gspread.authorize(credentials)
     except Exception as e:
-        print(f"❌ Error conexión Google Sheets: {e}")
         return None
 
 def guardar_en_sheets(datos_fila):
@@ -120,8 +103,8 @@ def guardar_en_sheets(datos_fila):
         if not client: return
         sheet = client.open("historial_cotizador_vidaley").sheet1 
         sheet.append_row(datos_fila)
-    except Exception as e:
-        print(f"❌ Error al guardar en Sheets Vida Ley: {e}")
+    except Exception:
+        pass
 
 def descargar_historial_sheets():
     try:
@@ -129,8 +112,7 @@ def descargar_historial_sheets():
         if not client: return None
         sheet = client.open("historial_cotizador_vidaley").sheet1
         return pd.DataFrame(sheet.get_all_records())
-    except Exception as e:
-        st.error(f"Error descargando historial Vida Ley: {e}")
+    except Exception:
         return None
 
 def enviar_notificacion_vidaley(cliente, ruc, celular, email, actividad, categoria, trabajadores, planilla, mejor_cia, mejor_anual, mejor_mensual):
@@ -167,351 +149,54 @@ def enviar_notificacion_vidaley(cliente, ruc, celular, email, actividad, categor
                 "Description": desc
             }]
         }
-        res_crm = requests.post(url_crm, headers=headers, json=payload)
-        if res_crm.status_code in [200, 201]: return True, "Éxito CRM"
-        else: raise Exception(res_crm.text)
-    except Exception as e:
-        print(f"⚠️ Error CRM Vida Ley: {e}. Activando respaldo por correo...")
-        try:
-            if "EMAIL_PASSWORD" not in st.secrets: return False, "Fallo"
-            msg = MIMEMultipart()
-            msg['From'] = "administracion@yqcorredores.com"
-            msg['To'] = "administracion@yqcorredores.com"
-            msg['Subject'] = f"🔔 [RESPALDO] Nuevo Lead VIDA LEY: {cliente} (RUC: {ruc})"
-            cuerpo = (
-                f"Nuevo Lead VIDA LEY Generado:\n\n"
-                f"Contratante: {cliente}\nRUC/DNI: {ruc}\nCelular: {celular}\nCorreo: {email}\n"
-                f"Actividad: {actividad}\nCategoría: {categoria}\nTrabajadores: {trabajadores}\n"
-                f"Planilla Mensual: S/ {planilla:,.2f}\nMejor Opción: {mejor_cia} (Anual: S/ {mejor_anual:,.2f} | Mensual: S/ {mejor_mensual:,.2f})"
-            )
-            msg.attach(MIMEText(cuerpo, 'plain'))
-            server = smtplib.SMTP("smtppro.zoho.com", 587)
-            server.starttls()
-            server.login("administracion@yqcorredores.com", st.secrets["EMAIL_PASSWORD"])
-            server.send_message(msg)
-            server.quit()
-            return True, "Enviado por respaldo correo."
-        except Exception as ex:
-            return False, str(ex)
+        requests.post(url_crm, headers=headers, json=payload)
+    except Exception:
+        pass
 
 # ==========================================
-# 3. MOTOR GENERADOR DE PDF (SLIP VIDA LEY)
-# ==========================================
-def generar_pdf_vidaley(datos, df_res, folio, razon_experto=""):
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=15, leftMargin=15, topMargin=16, bottomMargin=16)
-    estilos = getSampleStyleSheet()
-
-    AZUL_CORP = colors.HexColor("#03318e")
-    VERDE_EXITO = colors.HexColor("#089685")
-    DORADO_VIP = colors.HexColor("#bf8d1b")
-    AZUL_CLARO = colors.HexColor("#F0F6FF")
-    GRIS_TEXTO = colors.HexColor("#3c3c3c")
-    GRIS_FONDO = colors.HexColor("#F8F9FA")
-    BORDE_SUAVE = colors.HexColor("#DEE2E6")
-
-    st_tit = ParagraphStyle('T', parent=estilos['Heading1'], fontName='Helvetica-Bold', fontSize=13, textColor=AZUL_CORP, leading=15)
-    st_sub = ParagraphStyle('S', parent=estilos['Normal'], fontName='Helvetica-Bold', fontSize=9.5, textColor=AZUL_CORP, spaceAfter=4)
-    st_norm = ParagraphStyle('N', parent=estilos['Normal'], fontSize=8, textColor=GRIS_TEXTO, leading=10.5)
-    st_bold = ParagraphStyle('B', parent=st_norm, fontName='Helvetica-Bold', textColor=AZUL_CORP)
-    st_th = ParagraphStyle('TH', parent=estilos['Normal'], fontSize=7.5, fontName='Helvetica-Bold', textColor=colors.white, alignment=1, leading=9)
-    st_td = ParagraphStyle('TD', parent=estilos['Normal'], fontSize=7.5, textColor=GRIS_TEXTO, leading=9.5)
-    st_td_c = ParagraphStyle('TDC', parent=st_td, alignment=1)
-    st_rec = ParagraphStyle('REC', parent=st_td_c, fontName='Helvetica-Bold', fontSize=7, textColor=DORADO_VIP)
-
-    elements = []
-
-    # --- 1. CABECERA ---
-    img_yq = ImageRL("logo.png", width=3.8*cm, height=1.9*cm, kind='proportional') if os.path.exists("logo.png") else Paragraph("<b>YQ CORREDORES</b>", st_tit)
-    p_header = Paragraph(
-        "<b>YQ CORREDORES DE SEGUROS</b><br/>Slip de Cotización Seguro Vida Ley<br/>"
-        "<font size='7.5' color='#666666'>Decreto Legislativo N° 688 / Ley N° 29549 / D.U. N° 044-2019 (Desde el 1er día)</font>", st_tit
-    )
-    fecha_str = obtener_hora_peru().strftime('%d/%m/%Y %H:%M')
-    p_folio = Paragraph(f"<font color='#3c3c3c'><b>Cotización:</b> {folio}<br/><b>Fecha:</b> {fecha_str}<br/><b>Validez:</b> 15 días</font>", ParagraphStyle('F', parent=st_norm, alignment=2))
-
-    t_head = Table([[img_yq, p_header, p_folio]], colWidths=[3.8*cm, 9.7*cm, 4.5*cm])
-    t_head.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('LINEBELOW', (0,0), (-1,-1), 1, AZUL_CORP), ('BOTTOMPADDING', (0,0), (-1,-1), 6)]))
-    elements.append(t_head)
-    elements.append(Spacer(1, 8))
-
-    # --- 2. DATOS DEL CONTRATANTE Y PLANILLA ---
-    elements.append(Paragraph("1. INFORMACIÓN DEL CONTRATANTE Y PLANILLA ASEGURABLE", st_sub))
-    data_cliente = [
-        [Paragraph("<b>Contratante:</b>", st_bold), Paragraph(datos['razon_social'], st_norm),
-         Paragraph("<b>RUC / DNI:</b>", st_bold), Paragraph(datos['ruc'], st_norm)],
-        [Paragraph("<b>Actividad:</b>", st_bold), Paragraph(datos['actividad'], st_norm),
-         Paragraph("<b>N° Trabajadores:</b>", st_bold), Paragraph(f"{datos['trabajadores']} asegurados ({datos['categoria']})", st_norm)],
-        [Paragraph("<b>Distribución Etaria:</b>", st_bold), Paragraph(datos['resumen_edades'], st_norm),
-         Paragraph("<b>Planilla Mensual:</b>", st_bold), Paragraph(f"<b>S/ {datos['planilla']:,.2f}</b>", st_norm)]
-    ]
-    t_cli = Table(data_cliente, colWidths=[3.0*cm, 7.5*cm, 3.0*cm, 4.5*cm])
-    t_cli.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), GRIS_FONDO),
-        ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('PADDING', (0,0), (-1,-1), 4)
-    ]))
-    elements.append(t_cli)
-    elements.append(Spacer(1, 10))
-
-    # --- 3. PROPUESTA ECONÓMICA (4 FRECUENCIAS DE PAGO CON IGV) ---
-    elements.append(Paragraph("2. PROPUESTA ECONÓMICA POR FRECUENCIA DE PAGO (MONTOS FINALES CON IGV 18%)", st_sub))
-    
-    headers = ['Aseguradora', 'Pago Mensual\n(c/IGV)', 'Pago Trimestral\n(c/IGV)', 'Pago Semestral\n(c/IGV)', 'Pago Anual Único\n(c/IGV)', 'Acción / Emisión']
-    anchos = [3.4*cm, 3.0*cm, 3.0*cm, 3.0*cm, 3.0*cm, 2.6*cm]
-    data_tabla = [[Paragraph(h, st_th) for h in headers]]
-
-    for idx, row in df_res.iterrows():
-        es_mejor = (idx == 0)
-        cia = str(row['Aseguradora'])
-
-        celda_cia = []
-        if es_mejor:
-            celda_cia.append(Paragraph("<b>► MEJOR OPCIÓN</b>", st_rec))
-
-        mapa_logos = {
-            "Rímac": "logo_rimac.png",
-            "Pacífico": "logo_pacifico.png",
-            "Mapfre": "logo_mapfre.png",
-            "Protecta": "logo_protecta.png",
-            "La Positiva": "logo_positiva.png"
-        }
-        ruta_logo = mapa_logos.get(cia, "")
-        if ruta_logo and os.path.exists(ruta_logo):
-            t_lg = Table([[ImageRL(ruta_logo, width=2.3*cm, height=0.75*cm, kind='proportional')]], colWidths=[3.0*cm])
-            t_lg.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER'), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
-            celda_cia.append(t_lg)
-        else:
-            celda_cia.append(Paragraph(f"<font color='#03318e'><b>{cia}</b></font>", st_td_c))
-
-        tag_m = "<br/><font size='6' color='#666666'>(Prima Mínima)</font>" if row['Min_M'] else ""
-        txt_m = f"<b>S/ {row['Bruto_Mensual']:,.2f}</b>{tag_m}"
-
-        tag_t = "<br/><font size='6' color='#666666'>(Prima Mínima)</font>" if row['Min_T'] else ""
-        txt_t = f"<b>S/ {row['Bruto_Trimestral']:,.2f}</b>{tag_t}"
-
-        tag_s = "<br/><font size='6' color='#666666'>(Prima Mínima)</font>" if row['Min_S'] else ""
-        txt_s = f"<b>S/ {row['Bruto_Semestral']:,.2f}</b>{tag_s}"
-
-        tag_a = "<br/><font size='6' color='#666666'>(Prima Mínima)</font>" if row['Min_A'] else ""
-        txt_a = f"<font color='#089685' size='9'><b>S/ {row['Bruto_Anual']:,.2f}</b></font>{tag_a}"
-
-        msg_wa = f"Hola YQ, revisé mi cotización {folio} de Vida Ley para {datos['razon_social']} y deseo emitir con {cia} (Anual: S/ {row['Bruto_Anual']:,.2f} / Mensual: S/ {row['Bruto_Mensual']:,.2f})."
-        link_wa = f"https://api.whatsapp.com/send?phone=51906462225&text={urllib.parse.quote(msg_wa)}"
-        txt_accion = f"<a href='{link_wa}' color='#089685'><font size='7.5'><b>► EMITIR<br/>PÓLIZA</b></font></a>"
-
-        data_tabla.append([
-            celda_cia,
-            Paragraph(txt_m, st_td_c),
-            Paragraph(txt_t, st_td_c),
-            Paragraph(txt_s, st_td_c),
-            Paragraph(txt_a, st_td_c),
-            Paragraph(txt_accion, st_td_c)
-        ])
-
-    t_ofertas = Table(data_tabla, colWidths=anchos, repeatRows=1)
-    estilos_tabla = [
-        ('BACKGROUND', (0,0), (-1,0), AZUL_CORP),
-        ('GRID', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('PADDING', (0,0), (-1,-1), 5)
-    ]
-    if len(df_res) > 0:
-        estilos_tabla.extend([
-            ('BACKGROUND', (0,1), (-1,1), AZUL_CLARO),
-            ('BOX', (0,1), (-1,1), 1.5, AZUL_CORP)
-        ])
-    t_ofertas.setStyle(TableStyle(estilos_tabla))
-    elements.append(t_ofertas)
-    elements.append(Spacer(1, 5))
-
-    algun_minimo = any(row['Min_M'] or row['Min_T'] or row['Min_S'] or row['Min_A'] for _, row in df_res.iterrows())
-    if algun_minimo:
-        nota_min = (
-            "<b>* Nota sobre Prima Mínima:</b> Los importes mostrados incluyen el 18% de IGV. Cuando un monto indica <i>(Prima Mínima)</i>, "
-            "significa que la planilla declarada activa la tarifa mínima de emisión de la aseguradora para esa frecuencia. "
-            "En planillas pequeñas, elegir el <b>Pago Anual Único</b> genera un ahorro de hasta el 75% frente a realizar 12 pagos mensuales."
-        )
-        elements.append(Paragraph(nota_min, ParagraphStyle('NM', parent=st_norm, fontSize=7, textColor=colors.HexColor("#555555"))))
-        elements.append(Spacer(1, 8))
-
-    # --- 4. COBERTURAS DE LEY Y BENEFICIARIOS ---
-    elements.append(Paragraph("3. COBERTURAS OBLIGATORIAS DE LEY (D.L. N° 688 Y LEY N° 29549)", st_sub))
-    
-    cob_izq = (
-        "<b>INDEMNIZACIONES PRINCIPALES (DESDE EL 1ER DÍA):</b><br/>"
-        "• <b>Muerte Natural:</b> 16 Remuneraciones mensuales asegurables.<br/>"
-        "• <b>Muerte Accidental:</b> 32 Remuneraciones mensuales asegurables.<br/>"
-        "• <b>Invalidez Total y Permanente por Accidente:</b> 32 Remuneraciones mensuales asegurables.<br/>"
-        "• <b>Coberturas Adicionales Incluidas:</b> Gastos de sepelio, desgravamen, cáncer, infarto, quemaduras y accidentes graves (según plan de cada compañía hasta los 65 años)."
-    )
-    cob_der = (
-        "<b>BENEFICIARIOS LEGALES Y REGLAS DE PLANILLA:</b><br/>"
-        "• <b>1er Orden:</b> Cónyuge o conviviente e hijos (sin restricción de edad).<br/>"
-        "• <b>2do Orden (A falta de los anteriores):</b> Ascendientes (padres) y hermanos menores de 18 años.<br/>"
-        "• <b>Remuneración Asegurable:</b> Sueldo habitual en planilla hasta el tope máximo del SPP (excluye gratificaciones y utilidades).<br/>"
-        "• <b>Obligación del Empleador:</b> Recabar la Declaración Jurada de Beneficiarios firmada por cada trabajador."
-    )
-    t_cob = Table([[Paragraph(cob_izq, st_td), Paragraph(cob_der, st_td)]], colWidths=[9.0*cm, 9.0*cm])
-    t_cob.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), GRIS_FONDO),
-        ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('PADDING', (0,0), (-1,-1), 6)
-    ]))
-    elements.append(t_cob)
-    elements.append(Spacer(1, 8))
-
-    # --- 5. EXCLUSIONES Y CONDICIONES ---
-    excl_txt = (
-        "<b>CONSIDERACIONES Y EXCLUSIONES PRINCIPALES:</b><br/>"
-        "• Queda excluido el suicidio o intento de suicidio, así como lesiones o fallecimiento causados intencionalmente o por acto doloso.<br/>"
-        "• Seguro nominativo: requiere el envío de la trama/relación nominal de trabajadores (DNI, nombres, fecha de nacimiento y sueldo) antes del inicio de vigencia.<br/>"
-        "• Las tasas para trabajadores mayores de 70 años son referenciales y están sujetas a evaluación especial de suscripción."
-    )
-    t_excl = Table([[Paragraph(excl_txt, st_td)]], colWidths=[18.0*cm])
-    t_excl.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#F0F4F8")),
-        ('LINELEFT', (0,0), (-1,-1), 2, AZUL_CORP),
-        ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
-        ('PADDING', (0,0), (-1,-1), 6)
-    ]))
-    elements.append(t_excl)
-    elements.append(Spacer(1, 8))
-
-    # --- 6. ANÁLISIS DEL EXPERTO ---
-    if razon_experto:
-        elements.append(Paragraph("4. ANÁLISIS Y RECOMENDACIÓN DEL EXPERTO", st_sub))
-        elements.append(Spacer(1, 3))
-        t_box = Table([[Paragraph(f"<b>ESTRATEGIA RECOMENDADA:</b><br/>{razon_experto}", st_norm)]], colWidths=[18.0*cm])
-        t_box.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,-1), GRIS_FONDO),
-            ('LINELEFT', (0,0), (-1,-1), 2, AZUL_CORP),
-            ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE),
-            ('PADDING', (0,0), (-1,-1), 6)
-        ]))
-        elements.append(t_box)
-        elements.append(Spacer(1, 8))
-
-    footer_txt = "<b>YQ CORREDORES DE SEGUROS (Código SBS N5410 | RUC 10421076184):</b> <i>Emisión inmediata de pólizas y constancias Vida Ley, gestión de tramas y defensa ante siniestros.</i>"
-    elements.append(Paragraph(footer_txt, ParagraphStyle('FT', parent=st_norm, fontSize=7.5, textColor=AZUL_CORP, alignment=1)))
-
-    doc.build(elements)
-    buffer.seek(0)
-    return buffer
-
-# ==========================================
-# 4. MOTOR DE CÁLCULO VIDA LEY (LECTOR EXCEL)
+# 3. MOTOR DE CÁLCULO VIDA LEY (LECTOR EXCEL)
 # ==========================================
 @st.cache_data
-def cargar_tarifario_sctr_addon():
-    archivos = ['Tarifario_sctr.xlsx', 'tarifario_sctr.xlsx']
+def cargar_tarifario_vidaley():
+    archivos = ['tarifario_vidaley.xlsx', 'Tarifario_vidaley.xlsx']
     ruta = next((f for f in archivos if os.path.exists(f)), None)
-    if not ruta:
-        return None
+    if not ruta: return None, None
     try:
         xls = pd.ExcelFile(ruta)
-        df = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
-        df.columns = df.columns.str.strip()
-        return df
+        df_h1 = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
+        df_h2 = pd.read_excel(xls, sheet_name=xls.sheet_names[1])
+        df_h1.columns = df_h1.columns.str.strip()
+        df_h2.columns = df_h2.columns.str.strip()
+        df_h1['ACTIVIDAD_CLEAN'] = df_h1['ACTIVIDAD'].astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
+        df_h1['RANGO_CLEAN'] = df_h1['RANGO DE EDAD'].astype(str).str.strip()
+        df_h2['Concepto_Clean'] = df_h2['Concepto'].astype(str).str.strip()
+        return df_h1, df_h2
     except Exception:
-        return None
+        return None, None
 
-def calcular_sctr_addon(df_sctr, rubro_sel, act_sel, planilla_total):
-    fila = df_sctr[(df_sctr['Rubro'] == rubro_sel) & (df_sctr['Actividad'] == act_sel)]
-    if fila.empty:
-        return pd.DataFrame()
-    row = fila.iloc[0]
-    
-    # Estructura estándar de tus aseguradoras en Tarifario_sctr.xlsx
-    cias = [
-        ("Rímac", "Tasa_Salud_Rimac", "Min_Salud_Rimac", "Tasa_Pension_Rimac", "Min_Pension_Rimac", 1.03),
-        ("Pacífico", "Tasa_Salud_Pacifico", "Min_Salud_Pacifico", "Tasa_Pension_Pacifico", "Min_Pension_Pacifico", 1.03),
-        ("Mapfre", "Tasa_Salud_Mapfre", "Min_Salud_Mapfre", "Tasa_Pension_Mapfre", "Min_Pension_Mapfre", 1.03),
-        ("Sanitas - Protecta", "Tasa_Salud_Sanitas", "Min_Salud_Sanitas", "Tasa_Pension_Protecta", "Min_Pension_Protecta", 1.00)
-    ]
-    res = []
-    for nombre, col_ts, col_ms, col_tp, col_mp, der_emision in cias:
-        if col_ts in row and pd.notna(row[col_ts]):
-            t_sal = float(row[col_ts])
-            m_sal = float(row[col_ms]) if col_ms in row and pd.notna(row[col_ms]) else 0.0
-            t_pen = float(row[col_tp]) if col_tp in row and pd.notna(row[col_tp]) else 0.0
-            m_pen = float(row[col_mp]) if col_mp in row and pd.notna(row[col_mp]) else 0.0
-            
-            # Si las tasas vienen en porcentaje (ej. 1.20) o decimal (0.012)
-            factor_s = (t_sal / 100.0) if t_sal > 0.1 else t_sal
-            factor_p = (t_pen / 100.0) if t_pen > 0.1 else t_pen
-            
-            neto_sal = max(planilla_total * factor_s, m_sal)
-            neto_pen = max(planilla_total * factor_p, m_pen)
-            
-            bruto_sal = round(neto_sal * 1.18, 2)
-            bruto_pen = round(neto_pen * der_emision * 1.18, 2)
-            total_mes = round(bruto_sal + bruto_pen, 2)
-            
-            res.append({
-                "Aseguradora": nombre,
-                "Salud c/IGV": bruto_sal,
-                "Pensión c/IGV": bruto_pen,
-                "Total Mensual SCTR": total_mes,
-                "Total Anual SCTR": round(total_mes * 12, 2)
-            })
-    df_out = pd.DataFrame(res)
-    if not df_out.empty:
-        df_out = df_out.sort_values(by="Total Mensual SCTR", ascending=True).reset_index(drop=True)
-    return df_out
 def cotizar_vidaley(actividad_clean, categoria_sel, planilla_por_rango):
     df_h1, df_h2 = cargar_tarifario_vidaley()
-    if df_h1 is None or df_h2 is None:
-        return pd.DataFrame()
-
+    if df_h1 is None or df_h2 is None: return pd.DataFrame()
     sub_df = df_h1[df_h1['ACTIVIDAD_CLEAN'] == actividad_clean]
-    if sub_df.empty:
-        return pd.DataFrame()
+    if sub_df.empty: return pd.DataFrame()
 
     mapa_columnas = {
-        "Empleado (Administrativo / Oficina)": {
-            "Mapfre": "MAPFRE: EMPLEADO",
-            "Pacífico": "PACIFICO: EMPLEADO",
-            "Protecta": "PROTECTA: EMPLEADO",
-            "Rímac": "RIMAC PLAN BASE - EMPLEADOS"
-        },
-        "Obrero (Operativo Estándar)": {
-            "Mapfre": "MAPFRE: OBRERO",
-            "Pacífico": "PACIFICO: OBRERO",
-            "Protecta": "PROTECTA: OBRERO",
-            "Rímac": "RIMAC PLAN BASE - OBREROS"
-        },
-        "Obrero Alto Riesgo (Construcción / Planta)": {
-            "Mapfre": "MAPFRE: OBRERO ALTO RIESGO",
-            "Pacífico": "PACIFICO: OBRERO ALTO RIESGO",
-            "Protecta": "PROTECTA: OBRERO ALTO RIESGO",
-            "Rímac": "RIMAC PLAN BASE - OBREROS ALTO RIESGO"
-        }
+        "Empleado (Administrativo / Oficina)": {"Mapfre": "MAPFRE: EMPLEADO", "Pacífico": "PACIFICO: EMPLEADO", "Protecta": "PROTECTA: EMPLEADO", "Rímac": "RIMAC PLAN BASE - EMPLEADOS"},
+        "Obrero (Operativo Estándar)": {"Mapfre": "MAPFRE: OBRERO", "Pacífico": "PACIFICO: OBRERO", "Protecta": "PROTECTA: OBRERO", "Rímac": "RIMAC PLAN BASE - OBREROS"},
+        "Obrero Alto Riesgo (Construcción / Planta / Mina)": {"Mapfre": "MAPFRE: OBRERO ALTO RIESGO", "Pacífico": "PACIFICO: OBRERO ALTO RIESGO", "Protecta": "PROTECTA: OBRERO ALTO RIESGO", "Rímac": "RIMAC PLAN BASE - OBREROS ALTO RIESGO"}
     }
-
     cols_cia = mapa_columnas.get(categoria_sel, mapa_columnas["Obrero (Operativo Estándar)"])
     resultados = []
 
     for cia, col_tasa in cols_cia.items():
-        if col_tasa not in sub_df.columns or cia not in df_h2.columns:
-            continue
-
+        if col_tasa not in sub_df.columns or cia not in df_h2.columns: continue
         try:
             imp_serie = df_h2[df_h2['Concepto_Clean'].str.contains('Impuesto', case=False, na=False)][cia]
             imp = float(imp_serie.iloc[0]) if not imp_serie.empty and pd.notna(imp_serie.iloc[0]) else 0.18
-
             def get_min(palabra):
                 s = df_h2[df_h2['Concepto_Clean'].str.contains(palabra, case=False, na=False)][cia]
                 return float(s.iloc[0]) if not s.empty and pd.notna(s.iloc[0]) else 0.0
-
-            min_m = get_min('Mensual')
-            min_t = get_min('Trimestral')
-            min_s = get_min('Semestral')
-            min_a = get_min('Anual')
+            min_m, min_t, min_s, min_a = get_min('Mensual'), get_min('Trimestral'), get_min('Semestral'), get_min('Anual')
         except Exception:
             continue
 
@@ -521,14 +206,10 @@ def cotizar_vidaley(actividad_clean, categoria_sel, planilla_por_rango):
             if monto_planilla > 0:
                 fila_r = sub_df[sub_df['RANGO_CLEAN'] == rango]
                 if not fila_r.empty and pd.notna(fila_r.iloc[0][col_tasa]):
-                    tasa_decimal = float(fila_r.iloc[0][col_tasa])
-                    prima_neta_mensual_calc += monto_planilla * tasa_decimal
+                    prima_neta_mensual_calc += monto_planilla * float(fila_r.iloc[0][col_tasa])
                     planilla_total += monto_planilla
 
-        if planilla_total <= 0:
-            continue
-
-        tasa_ponderada_pct = (prima_neta_mensual_calc / planilla_total) * 100.0
+        if planilla_total <= 0: continue
 
         neto_m = max(prima_neta_mensual_calc * 1.0, min_m)
         neto_t = max(prima_neta_mensual_calc * 3.0, min_t)
@@ -537,15 +218,10 @@ def cotizar_vidaley(actividad_clean, categoria_sel, planilla_por_rango):
 
         resultados.append({
             "Aseguradora": cia,
-            "Tasa_Ponderada_Pct": round(tasa_ponderada_pct, 3),
-            "Bruto_Mensual": round(neto_m * (1.0 + imp), 2),
-            "Min_M": (prima_neta_mensual_calc * 1.0) < min_m,
-            "Bruto_Trimestral": round(neto_t * (1.0 + imp), 2),
-            "Min_T": (prima_neta_mensual_calc * 3.0) < min_t,
-            "Bruto_Semestral": round(neto_s * (1.0 + imp), 2),
-            "Min_S": (prima_neta_mensual_calc * 6.0) < min_s,
-            "Bruto_Anual": round(neto_a * (1.0 + imp), 2),
-            "Min_A": (prima_neta_mensual_calc * 12.0) < min_a
+            "Bruto_Mensual": round(neto_m * (1.0 + imp), 2), "Min_M": (prima_neta_mensual_calc * 1.0) < min_m,
+            "Bruto_Trimestral": round(neto_t * (1.0 + imp), 2), "Min_T": (prima_neta_mensual_calc * 3.0) < min_t,
+            "Bruto_Semestral": round(neto_s * (1.0 + imp), 2), "Min_S": (prima_neta_mensual_calc * 6.0) < min_s,
+            "Bruto_Anual": round(neto_a * (1.0 + imp), 2), "Min_A": (prima_neta_mensual_calc * 12.0) < min_a
         })
 
     df_out = pd.DataFrame(resultados)
@@ -554,23 +230,97 @@ def cotizar_vidaley(actividad_clean, categoria_sel, planilla_por_rango):
     return df_out
 
 # ==========================================
+# 4. MOTOR GENERADOR DE PDF
+# ==========================================
+def generar_pdf_vidaley(datos, df_res, folio, razon_experto=""):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=15, leftMargin=15, topMargin=16, bottomMargin=16)
+    estilos = getSampleStyleSheet()
+
+    AZUL_CORP, GRIS_TEXTO, GRIS_FONDO, BORDE_SUAVE = colors.HexColor("#03318e"), colors.HexColor("#3c3c3c"), colors.HexColor("#F8F9FA"), colors.HexColor("#DEE2E6")
+    st_tit = ParagraphStyle('T', parent=estilos['Heading1'], fontName='Helvetica-Bold', fontSize=13, textColor=AZUL_CORP, leading=15)
+    st_sub = ParagraphStyle('S', parent=estilos['Normal'], fontName='Helvetica-Bold', fontSize=9.5, textColor=AZUL_CORP, spaceAfter=4)
+    st_norm = ParagraphStyle('N', parent=estilos['Normal'], fontSize=8, textColor=GRIS_TEXTO, leading=10.5)
+    st_bold = ParagraphStyle('B', parent=st_norm, fontName='Helvetica-Bold', textColor=AZUL_CORP)
+    st_th = ParagraphStyle('TH', parent=estilos['Normal'], fontSize=7.5, fontName='Helvetica-Bold', textColor=colors.white, alignment=1)
+    st_td_c = ParagraphStyle('TDC', parent=estilos['Normal'], fontSize=7.5, textColor=GRIS_TEXTO, alignment=1)
+
+    elements = []
+    
+    # Cabecera
+    img_yq = ImageRL("logo.png", width=3.8*cm, height=1.9*cm, kind='proportional') if os.path.exists("logo.png") else Paragraph("<b>YQ</b>", st_tit)
+    p_header = Paragraph("<b>YQ CORREDORES DE SEGUROS</b><br/>Slip de Cotización Seguro Vida Ley<br/><font size='7.5' color='#666666'>D.L. N° 688 / Ley N° 29549 (Desde el 1er día)</font>", st_tit)
+    p_folio = Paragraph(f"<font color='#3c3c3c'><b>Cotización:</b> {folio}<br/><b>Fecha:</b> {obtener_hora_peru().strftime('%d/%m/%Y %H:%M')}</font>", ParagraphStyle('F', parent=st_norm, alignment=2))
+    t_head = Table([[img_yq, p_header, p_folio]], colWidths=[3.8*cm, 9.7*cm, 4.5*cm])
+    t_head.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('LINEBELOW', (0,0), (-1,-1), 1, AZUL_CORP), ('BOTTOMPADDING', (0,0), (-1,-1), 6)]))
+    elements.append(t_head)
+    elements.append(Spacer(1, 8))
+
+    # Cliente
+    elements.append(Paragraph("1. INFORMACIÓN DEL CONTRATANTE Y PLANILLA", st_sub))
+    data_cliente = [
+        [Paragraph("<b>Contratante:</b>", st_bold), Paragraph(datos['razon_social'], st_norm), Paragraph("<b>RUC / DNI:</b>", st_bold), Paragraph(datos['ruc'], st_norm)],
+        [Paragraph("<b>Actividad:</b>", st_bold), Paragraph(datos['actividad'], st_norm), Paragraph("<b>Trabajadores:</b>", st_bold), Paragraph(f"{datos['trabajadores']} ({datos['categoria']})", st_norm)],
+        [Paragraph("<b>Edades:</b>", st_bold), Paragraph(datos['resumen_edades'], st_norm), Paragraph("<b>Planilla Total:</b>", st_bold), Paragraph(f"<b>S/ {datos['planilla']:,.2f}</b>", st_norm)]
+    ]
+    t_cli = Table(data_cliente, colWidths=[2.5*cm, 8.0*cm, 3.0*cm, 4.5*cm])
+    t_cli.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), GRIS_FONDO), ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE), ('INNERGRID', (0,0), (-1,-1), 0.5, BORDE_SUAVE), ('PADDING', (0,0), (-1,-1), 4)]))
+    elements.append(t_cli)
+    elements.append(Spacer(1, 10))
+
+    # Tabla Económica
+    elements.append(Paragraph("2. PROPUESTA ECONÓMICA (MONTOS FINALES CON IGV)", st_sub))
+    data_tabla = [[Paragraph(h, st_th) for h in ['Aseguradora', 'Mensual\n(c/IGV)', 'Trimestral\n(c/IGV)', 'Semestral\n(c/IGV)', 'Anual Único\n(c/IGV)']]]
+    for idx, row in df_res.iterrows():
+        cia = str(row['Aseguradora'])
+        mapa_logos = {"Rímac": "logo_rimac.png", "Pacífico": "logo_pacifico.png", "Mapfre": "logo_mapfre.png", "Protecta": "logo_protecta.png"}
+        ruta_logo = mapa_logos.get(cia, "")
+        if ruta_logo and os.path.exists(ruta_logo):
+            celda_cia = Table([[ImageRL(ruta_logo, width=2.3*cm, height=0.75*cm, kind='proportional')]], colWidths=[3.0*cm])
+            celda_cia.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER'), ('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
+        else:
+            celda_cia = Paragraph(f"<b>{cia}</b>", st_td_c)
+
+        data_tabla.append([
+            celda_cia,
+            Paragraph(f"S/ {row['Bruto_Mensual']:,.2f}", st_td_c),
+            Paragraph(f"S/ {row['Bruto_Trimestral']:,.2f}", st_td_c),
+            Paragraph(f"S/ {row['Bruto_Semestral']:,.2f}", st_td_c),
+            Paragraph(f"<font color='#089685' size='8'><b>S/ {row['Bruto_Anual']:,.2f}</b></font>", st_td_c)
+        ])
+    t_ofertas = Table(data_tabla, colWidths=[4.0*cm, 3.5*cm, 3.5*cm, 3.5*cm, 3.5*cm], repeatRows=1)
+    estilos_tabla = [('BACKGROUND', (0,0), (-1,0), AZUL_CORP), ('GRID', (0,0), (-1,-1), 0.5, BORDE_SUAVE), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('PADDING', (0,0), (-1,-1), 5)]
+    if len(df_res) > 0: estilos_tabla.extend([('BACKGROUND', (0,1), (-1,1), colors.HexColor("#F0F6FF")), ('BOX', (0,1), (-1,1), 1.5, AZUL_CORP)])
+    t_ofertas.setStyle(TableStyle(estilos_tabla))
+    elements.append(t_ofertas)
+    elements.append(Spacer(1, 8))
+
+    # Recomendación
+    if razon_experto:
+        elements.append(Paragraph("3. ANÁLISIS DEL EXPERTO", st_sub))
+        t_box = Table([[Paragraph(f"{razon_experto}", st_norm)]], colWidths=[18.0*cm])
+        t_box.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), GRIS_FONDO), ('LINELEFT', (0,0), (-1,-1), 2, AZUL_CORP), ('BOX', (0,0), (-1,-1), 0.5, BORDE_SUAVE), ('PADDING', (0,0), (-1,-1), 6)]))
+        elements.append(t_box)
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+# ==========================================
 # 5. INTERFAZ DE USUARIO (STREAMLIT)
 # ==========================================
+# Cargar datos Excel ANTES de pintar la UI
 df_h1, df_h2 = cargar_tarifario_vidaley()
-origen_url = st.query_params.get("origen", "")
 
+origen_url = st.query_params.get("origen", "")
 if origen_url != "web":
     if os.path.exists("logo_web.png"):
         c_l1, c_l2, c_l3 = st.columns([1, 2, 1])
         with c_l2: st.image("logo_web.png", use_container_width=True)
     st.markdown("""
-        <div style="text-align: center; padding: 15px 0px;">
-            <h1 style="color: #03318e; font-size: 2.3rem; font-weight: 800; margin-bottom: 8px;">
-                Cotiza y emite tu Seguro Vida Ley al instante.
-            </h1>
-            <p style="color: #3c3c3c; font-size: 1.1rem;">
-                Compara tarifas oficiales de <b>Pacífico, Rímac, Mapfre y Protecta</b> desde el primer día de labores.
-            </p>
+        <div style="text-align: center; padding: 10px 0px;">
+            <h1 style="color: #03318e; font-size: 2.3rem; font-weight: 800; margin-bottom: 5px;">Cotiza tu Seguro Vida Ley al instante.</h1>
+            <p style="color: #3c3c3c; font-size: 1.1rem;">Compara Pacífico, Rímac, Mapfre y Protecta.</p>
         </div>
     """, unsafe_allow_html=True)
     st.divider()
@@ -579,285 +329,115 @@ codigo_actual = st.session_state.get('codigo_secreto', '')
 es_admin = (codigo_actual == CODIGO_ADMIN or codigo_actual in CODIGOS_ASESORES)
 
 if df_h1 is None:
-    st.error("❌ No se encontró el archivo 'tarifario_vidaley.xlsx' en el repositorio.")
+    st.error("❌ No se encontró el archivo 'tarifario_vidaley.xlsx'.")
 else:
-    # --- LECTURA INTELIGENTE DE DATOS CRUZADOS (CROSS-SELLING) ---
-    razon_url = st.query_params.get("razon", "")
-    ruc_url = st.query_params.get("ruc", "")
-    cel_url = st.query_params.get("cel", "")
-    mail_url = st.query_params.get("mail", "")
-    trab_url = st.query_params.get("trab", "1")
+    razon_url, ruc_url = st.query_params.get("razon", ""), st.query_params.get("ruc", "")
+    cel_url, mail_url = st.query_params.get("cel", ""), st.query_params.get("mail", "")
+    try: trab_default = max(1, int(st.query_params.get("trab", "1")))
+    except: trab_default = 1
 
-    try:
-        trab_default = max(1, int(trab_url))
-    except:
-        trab_default = 1
+    if razon_url: st.info(f"⚡ **¡Hola {razon_url}!** Datos precargados correctamente.")
 
-    if razon_url:
-        st.info(f"⚡ **¡Hola {razon_url}!** Hemos cargado automáticamente los datos de tu empresa para que cotices en un solo clic.")
-
-    st.markdown("<h3 style='color: #03318e; font-weight: 700; margin-bottom: 10px;'>1. Datos de la Empresa / Contratante</h3>", unsafe_allow_html=True)
-    
+    st.markdown("<h3 style='color: #03318e; font-weight: 700; margin-bottom: 10px;'>1. Datos de la Empresa</h3>", unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     with col1:
-        razon_social = st.text_input("Razón Social o Nombre Completo", value=razon_url, placeholder="Ej: Constructora Peruana SAC")
-        ruc = st.text_input("RUC o DNI", value=ruc_url, max_chars=11, placeholder="Ej: 20601234567 o 40123456")
+        razon_social = st.text_input("Razón Social", value=razon_url, placeholder="Constructora SAC")
+        ruc = st.text_input("RUC o DNI", value=ruc_url, max_chars=11)
     with col2:
-        celular = st.text_input("Celular / WhatsApp", value=cel_url, max_chars=9, placeholder="Ej: 999123456")
-        email = st.text_input("Correo Electrónico", value=mail_url, placeholder="rrhh@empresa.com")
+        celular = st.text_input("Celular", value=cel_url, max_chars=9)
+        email = st.text_input("Correo", value=mail_url)
 
-    st.markdown("<h3 style='color: #03318e; font-weight: 700; margin-top: 15px; margin-bottom: 10px;'>2. Actividad y Perfil de Trabajadores</h3>", unsafe_allow_html=True)
-    
+    st.markdown("<h3 style='color: #03318e; font-weight: 700; margin-top: 15px;'>2. Actividad y Planilla</h3>", unsafe_allow_html=True)
     col_a1, col_a2 = st.columns(2)
     with col_a1:
-        actividades_lista = df_h1['ACTIVIDAD_CLEAN'].dropna().unique().tolist()
-        actividad_sel = st.selectbox("Rubro / Actividad Económica", actividades_lista)
+        actividad_sel = st.selectbox("Rubro", df_h1['ACTIVIDAD_CLEAN'].dropna().unique().tolist())
     with col_a2:
-        categorias_lista = [
-            "Empleado (Administrativo / Oficina)",
-            "Obrero (Operativo Estándar)",
-            "Obrero Alto Riesgo (Construcción / Planta / Mina)"
-        ]
-        idx_cat_def = 2 if any(k in actividad_sel for k in ["Construcción", "Seguridad", "Transporte"]) else (0 if "Oficinas" in actividad_sel else 1)
-        categoria_sel = st.selectbox("Categoría de Trabajadores", categorias_lista, index=idx_cat_def)
+        idx_cat_def = 2 if any(k in actividad_sel for k in ["Construcción", "Seguridad", "Transporte"]) else 0
+        categoria_sel = st.selectbox("Categoría", ["Empleado (Administrativo / Oficina)", "Obrero (Operativo Estándar)", "Obrero Alto Riesgo (Construcción / Planta / Mina)"], index=idx_cat_def)
 
-    st.markdown("<h3 style='color: #03318e; font-weight: 700; margin-top: 15px; margin-bottom: 5px;'>3. Distribución por Rango de Edad y Planilla</h3>", unsafe_allow_html=True)
-    st.caption(f"*Ingresa la cantidad de trabajadores por rango de edad. El sistema sugiere automáticamente la planilla mínima legal (S/ {RMV_VIGENTE:,.2f} por trabajador), la cual puedes editar si ganan más.*")
-
-    rangos_principales = ["18-36", "37-55", "56-63"]
-    trabajadores_rango = {}
-    planilla_rango = {}
-
+    trabajadores_rango, planilla_rango = {}, {}
     cols_r = st.columns(3)
-    for i, r_edad in enumerate(rangos_principales):
+    for i, r_edad in enumerate(["18-36", "37-55", "56-63"]):
         with cols_r[i]:
-            val_def = trab_default if i == 0 else 0
-            n_t = st.number_input(f"N° Trab. ({r_edad} años)", min_value=0, max_value=5000, value=val_def, key=f"nt_{r_edad}")
+            n_t = st.number_input(f"Trab. {r_edad}", min_value=0, max_value=5000, value=trab_default if i==0 else 0)
             trabajadores_rango[r_edad] = n_t
             if n_t > 0:
-                min_pl = float(n_t * RMV_VIGENTE)
-                pl_r = st.number_input(f"Planilla {r_edad} (S/)", min_value=min_pl, max_value=10000000.0, value=min_pl, step=100.0, key=f"pl_{r_edad}")
-                planilla_rango[r_edad] = pl_r
-            else:
-                planilla_rango[r_edad] = 0.0
+                planilla_rango[r_edad] = st.number_input(f"Planilla {r_edad}", min_value=float(n_t*RMV_VIGENTE), value=float(n_t*RMV_VIGENTE), step=100.0)
+            else: planilla_rango[r_edad] = 0.0
 
-    with st.expander("➕ ¿Tienes trabajadores mayores de 64 años? (Clic aquí para agregarlos)"):
-        cols_s = st.columns(3)
-        for i, r_edad in enumerate(["64-70", "71-80", "81-110"]):
-            with cols_s[i]:
-                n_t = st.number_input(f"N° Trab. ({r_edad} años)", min_value=0, max_value=1000, value=0, key=f"nt_{r_edad}")
-                trabajadores_rango[r_edad] = n_t
-                if n_t > 0:
-                    min_pl = float(n_t * RMV_VIGENTE)
-                    pl_r = st.number_input(f"Planilla {r_edad} (S/)", min_value=min_pl, max_value=5000000.0, value=min_pl, step=100.0, key=f"pl_{r_edad}")
-                    planilla_rango[r_edad] = pl_r
-                else:
-                    planilla_rango[r_edad] = 0.0
-
-    total_trab = sum(trabajadores_rango.values())
-    total_planilla = sum(planilla_rango.values())
-
-    if total_trab > 0:
-        st.info(f"📊 **Resumen a cotizar:** {total_trab} trabajador(es) | **Planilla Mensual Total:** S/ {total_planilla:,.2f}")
-
-    msg_esp = "Hola YQ, estoy en el cotizador de Vida Ley y deseo cotizar una actividad especial o planilla corporativa."
-    link_esp = f"https://api.whatsapp.com/send?phone=51906462225&text={urllib.parse.quote(msg_esp)}"
-    st.markdown(f"<div style='font-size: 0.88rem; color: #555;'>💡 ¿Tu empresa realiza actividades mineras, petróleo o no encuentras tu giro? <a href='{link_esp}' target='_blank' style='color: #089685; font-weight: 700; text-decoration: underline;'>Cotiza directo por WhatsApp aquí</a>.</div>", unsafe_allow_html=True)
+    total_trab, total_planilla = sum(trabajadores_rango.values()), sum(planilla_rango.values())
+    if total_trab > 0: st.info(f"📊 **Planilla Total:** S/ {total_planilla:,.2f} ({total_trab} asegurados).")
 
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("Generar Propuesta Vida Ley", type="primary", use_container_width=True):
-        celular_limpio = "".join(filter(str.isdigit, str(celular)))
-        correo_limpio = email.strip()
-        ruc_limpio = ruc.strip()
-        
-        es_ruc = bool(re.match(r'^(10|20)\d{9}$', ruc_limpio))
-        es_dni = bool(re.match(r'^\d{8}$', ruc_limpio))
-
-        if not razon_social.strip():
-            st.error("⚠️ Por favor ingresa la Razón Social o Nombre del Contratante.")
-        elif total_trab <= 0:
-            st.error("⚠️ Debes ingresar al menos 1 trabajador en algún rango de edad.")
-        elif not es_admin and (not ruc_limpio or not (es_ruc or es_dni)):
-            st.error("🏢 Ingresa un RUC válido (11 dígitos, empezando en 10 o 20) o un DNI válido (8 dígitos).")
-        elif not es_admin and (len(celular_limpio) != 9 or not celular_limpio.startswith('9')):
-            st.error("📱 Por favor ingresa un número de celular válido de 9 dígitos (Ej: 999123456).")
-        elif not es_admin and (not correo_limpio or not re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", correo_limpio)):
-            st.error("📧 Por favor ingresa un correo electrónico real para enviarte tu propuesta.")
+        cel_cl, ruc_cl, mail_cl = "".join(filter(str.isdigit, str(celular))), ruc.strip(), email.strip()
+        if not razon_social.strip(): st.error("⚠️ Ingresa la Razón Social.")
+        elif total_trab <= 0: st.error("⚠️ Ingresa al menos 1 trabajador.")
+        elif not es_admin and (not ruc_cl or len(ruc_cl) not in [8, 11]): st.error("🏢 RUC/DNI inválido.")
         else:
             df_res = cotizar_vidaley(actividad_sel, categoria_sel, planilla_rango)
-            resumen_ed = ", ".join([f"{k} años: {v} trab. (S/{planilla_rango[k]:,.0f})" for k, v in trabajadores_rango.items() if v > 0])
-            
-            st.session_state['res_vl'] = df_res
+            st.session_state['res_vl'], st.session_state['id_vl'] = df_res, f"VL-{obtener_hora_peru().strftime('%m%d-%H%M')}"
             st.session_state['datos_vl'] = {
-                "razon_social": razon_social.strip(),
-                "ruc": ruc_limpio if ruc_limpio else "Por confirmar",
-                "celular": celular_limpio,
-                "email": correo_limpio,
-                "actividad": actividad_sel,
-                "categoria": categoria_sel.split(" (")[0],
-                "trabajadores": total_trab,
-                "planilla": total_planilla,
-                "resumen_edades": resumen_ed,
-                "tiene_mayores_70": (trabajadores_rango.get("71-80", 0) + trabajadores_rango.get("81-110", 0)) > 0
+                "razon_social": razon_social.strip(), "ruc": ruc_cl, "celular": cel_cl, "email": mail_cl,
+                "actividad": actividad_sel, "categoria": categoria_sel.split(" (")[0], 
+                "trabajadores": total_trab, "planilla": total_planilla,
+                "resumen_edades": ", ".join([f"{k} años: {v} trab." for k, v in trabajadores_rango.items() if v > 0])
             }
-            st.session_state['id_vl'] = f"VL-{obtener_hora_peru().strftime('%m%d-%H%M')}"
-            
             if not df_res.empty and not es_admin:
-                mejor_c = df_res.iloc[0]['Aseguradora']
-                mejor_a = df_res.iloc[0]['Bruto_Anual']
-                mejor_m = df_res.iloc[0]['Bruto_Mensual']
-                enviar_notificacion_vidaley(razon_social.strip(), ruc_limpio, celular_limpio, correo_limpio, actividad_sel, categoria_sel, total_trab, total_planilla, mejor_c, mejor_a, mejor_m)
-                
-                f_log, h_log = obtener_hora_peru().strftime('%Y-%m-%d'), obtener_hora_peru().strftime('%H:%M:%S')
-                guardar_en_sheets([f_log, h_log, st.session_state['id_vl'], razon_social.strip(), ruc_limpio, celular_limpio, correo_limpio, actividad_sel, categoria_sel, total_trab, total_planilla, mejor_c, mejor_a, mejor_m])
+                enviar_notificacion_vidaley(razon_social.strip(), ruc_cl, cel_cl, mail_cl, actividad_sel, categoria_sel, total_trab, total_planilla, df_res.iloc[0]['Aseguradora'], df_res.iloc[0]['Bruto_Anual'], df_res.iloc[0]['Bruto_Mensual'])
+                guardar_en_sheets([obtener_hora_peru().strftime('%Y-%m-%d'), obtener_hora_peru().strftime('%H:%M:%S'), st.session_state['id_vl'], razon_social.strip(), ruc_cl, cel_cl, mail_cl, actividad_sel, categoria_sel, total_trab, total_planilla, df_res.iloc[0]['Aseguradora'], df_res.iloc[0]['Bruto_Anual'], df_res.iloc[0]['Bruto_Mensual']])
 
     if st.session_state.get('res_vl') is not None:
-        df_res = st.session_state['res_vl'].copy()
-        datos = st.session_state['datos_vl']
-        
-        if df_res.empty:
-            st.warning("No se encontraron tasas disponibles para esta combinación.")
+        df_res, datos, folio = st.session_state['res_vl'], st.session_state['datos_vl'], st.session_state['id_vl']
+        if df_res.empty: st.warning("No hay tasas para esta combinación.")
         else:
-            if datos.get("tiene_mayores_70"):
-                st.warning("⚠️ **Nota Importante:** Has incluido trabajadores mayores de 70 años. Sus tasas son referenciales y requieren confirmación de suscripción con tu asesor.")
+            mejor_cia = df_res.iloc[0]['Aseguradora']
+            ahorro = max(0, (df_res.iloc[0]['Bruto_Mensual']*12) - df_res.iloc[0]['Bruto_Anual'])
+            txt_ahorro = f" Al elegir Pago Anual, ahorras S/ {ahorro:,.2f} frente a pagos mensuales." if ahorro > 10 else ""
+            razon = f"Recomendamos {mejor_cia} por eficiencia financiera.{txt_ahorro}"
 
-            opciones_cias = df_res['Aseguradora'].tolist()
-            
-            top_row = df_res.iloc[0]
-            costo_12_meses = top_row['Bruto_Mensual'] * 12
-            ahorro_anual = max(0.0, costo_12_meses - top_row['Bruto_Anual'])
-
-            if es_admin:
-                st.success("🔓 MODO CORREDOR ACTIVADO - Configura la recomendación para el cliente:")
-                mejor_opcion_elegida = st.selectbox("Selecciona la Aseguradora a destacar como 'Mejor Opción':", opciones_cias, index=0)
-                df_res['es_top'] = df_res['Aseguradora'] == mejor_opcion_elegida
-                df_res = df_res.sort_values(by=['es_top', 'Bruto_Anual'], ascending=[False, True]).drop(columns=['es_top']).reset_index(drop=True)
-                
-                top_row = df_res.iloc[0]
-                ahorro_anual = max(0.0, (top_row['Bruto_Mensual'] * 12) - top_row['Bruto_Anual'])
-                txt_ahorro = f" Además, al optar por la modalidad ANUAL (S/ {top_row['Bruto_Anual']:,.2f}) en lugar de 12 pagos mensuales, tu empresa ahorra S/ {ahorro_anual:,.2f} al año." if ahorro_anual > 10 else ""
-                
-                razon_default = f"Recomendamos {mejor_opcion_elegida} por ofrecer la prima más eficiente para el rubro de {datos['actividad']} cumpliendo al 100% con el D.L. 688.{txt_ahorro}"
-                razon_admin = st.text_area("Motivo (Análisis del Experto para el PDF):", value=razon_default)
-            else:
-                mejor_opcion_elegida = opciones_cias[0]
-                txt_ahorro = f" Te sugerimos elegir la modalidad de <b>Pago Anual Único (S/ {top_row['Bruto_Anual']:,.2f})</b>, con la cual tu empresa <b>ahorra S/ {ahorro_anual:,.2f} al año</b> frente a realizar 12 emisiones mensuales (S/ {costo_12_meses:,.2f})." if ahorro_anual > 10 else f" Si buscas la cuota mensual más baja para flujo de caja inmediato, también dispones de opciones desde S/ {df_res['Bruto_Mensual'].min():,.2f} al mes."
-                razon_admin = (
-                    f"Nuestro algoritmo ha comparado las tasas por rango etario y primas mínimas de ley para <b>{datos['actividad']}</b>. "
-                    f"Destacamos a <b>{mejor_opcion_elegida}</b> como la alternativa de mayor eficiencia financiera.{txt_ahorro}"
-                )
-
-           # ---------------------------------------------------------
-            # RESULTADOS DE VIDA LEY
-            # ---------------------------------------------------------
             st.markdown("---")
-            st.success(f"¡Cotización lista! Opción recomendada por eficiencia anual: **{mejor_opcion_elegida}**")
+            st.success(f"¡Cotización lista! Opción recomendada: **{mejor_cia}**")
             
             df_vista = df_res[['Aseguradora', 'Bruto_Mensual', 'Bruto_Trimestral', 'Bruto_Semestral', 'Bruto_Anual']].copy()
-            df_vista.columns = ['Aseguradora', 'Mensual c/IGV', 'Trimestral c/IGV', 'Semestral c/IGV', 'Anual c/IGV (Recomendado)']
-            for col_m in ['Mensual c/IGV', 'Trimestral c/IGV', 'Semestral c/IGV', 'Anual c/IGV (Recomendado)']:
-                df_vista[col_m] = df_vista[col_m].apply(lambda x: f"S/ {x:,.2f}")
-            
+            df_vista.columns = ['Aseguradora', 'Mensual c/IGV', 'Trimestral', 'Semestral', 'Anual (Recomendado)']
+            for c in df_vista.columns[1:]: df_vista[c] = df_vista[c].apply(lambda x: f"S/ {x:,.2f}")
             st.dataframe(df_vista, hide_index=True, use_container_width=True)
 
-            folio = st.session_state['id_vl']
-            pdf_buffer = generar_pdf_vidaley(datos, df_res, folio, razon_admin)
-            nombre_clean = re.sub(r'[^a-zA-Z0-9]', '', datos['razon_social'])[:15] or "Empresa"
-
+            pdf_buf = generar_pdf_vidaley(datos, df_res, folio, razon)
             col_b1, col_b2 = st.columns(2)
-            with col_b1:
-                st.download_button(
-                    label="Descargar Slip Oficial Vida Ley (PDF)",
-                    data=pdf_buffer,
-                    file_name=f"SLIP_VIDALEY_{nombre_clean}_{obtener_hora_peru().strftime('%d%m%y')}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
+            with col_b1: st.download_button("Descargar Slip Vida Ley (PDF)", data=pdf_buf, file_name=f"VIDALEY_{folio}.pdf", mime="application/pdf")
             with col_b2:
-                mejor_cia = df_res.iloc[0]['Aseguradora']
-                mejor_anual = df_res.iloc[0]['Bruto_Anual']
-                mejor_mes = df_res.iloc[0]['Bruto_Mensual']
-                msg_wa = f"Hola YQ, acabo de cotizar el Seguro Vida Ley ({folio}) para {datos['razon_social']} y deseo emitir mi póliza con {mejor_cia} (Anual: S/ {mejor_anual:,.2f} / Mensual: S/ {mejor_mes:,.2f})."
-                enlace_wa = f"https://api.whatsapp.com/send?phone=51906462225&text={urllib.parse.quote(msg_wa)}"
-                st.markdown(f"""
-                    <a href='{enlace_wa}' target='_blank' style='display: flex; align-items: center; justify-content: center; width: 100%; height: 48px; background-color: #25D366; color: white; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 16px; box-sizing: border-box;'>
-                        Emitir Póliza por WhatsApp
-                    </a>
-                """, unsafe_allow_html=True)
+                link_wa = f"https://api.whatsapp.com/send?phone=51906462225&text=Hola YQ, deseo emitir Vida Ley ({folio}) con {mejor_cia}."
+                st.markdown(f"<a href='{link_wa}' target='_blank' style='display:flex;align-items:center;justify-content:center;width:100%;height:48px;background-color:#25D366;color:white;border-radius:8px;text-decoration:none;font-weight:700;'>Emitir Póliza por WhatsApp</a>", unsafe_allow_html=True)
 
             # ---------------------------------------------------------
-            # BLOQUE INFERIOR INTERACTIVO: AGREGAR SCTR SIN SALIR DE LA PÁGINA
+            # BLOQUE INFERIOR: VENTA CRUZADA SCTR (ORDER BUMP REDIRECT)
             # ---------------------------------------------------------
-            st.markdown("""
-                <div style="background: linear-gradient(135deg, #F0F6FF 0%, #E6EEFF 100%); border: 2px solid #03318e; border-radius: 12px; padding: 20px; margin-top: 25px;">
+            # 👉 REEMPLAZA ESTA URL CON EL ENLACE REAL DE TU APLICACIÓN SCTR
+            URL_DESTINO_SCTR = "https://TU-APP-SCTR.streamlit.app" 
+            
+            params = urllib.parse.urlencode({"razon": datos['razon_social'], "ruc": datos['ruc'], "cel": datos['celular'], "mail": datos['email'], "trab": datos['trabajadores'], "planilla": datos['planilla']})
+            link_cruzado_sctr = f"{URL_DESTINO_SCTR}?{params}"
+            link_wa_pack = f"https://api.whatsapp.com/send?phone=51906462225&text=Hola YQ, deseo emitir Pack Vida Ley + SCTR para mis {datos['trabajadores']} trabajadores."
+
+            st.markdown(f"""
+                <div style="background: linear-gradient(135deg, #F0F6FF 0%, #E6EEFF 100%); border: 2px solid #03318e; border-radius: 12px; padding: 22px; margin-top: 25px;">
                     <div style="display: flex; align-items: center; gap: 12px;">
                         <span style="font-size: 28px;">🏗️</span>
-                        <div>
-                            <h3 style="color: #03318e; margin: 0; font-weight: 800; font-size: 1.15rem;">
-                                ¿También te exigen SCTR Salud y Pensión para ingresar a obra o planta?
-                            </h3>
-                            <p style="color: #3c3c3c; font-size: 0.92rem; margin: 3px 0 0 0;">
-                                Cotízalo <b>aquí mismo en 1 clic</b> usando tu misma planilla de <b>S/ {:,.2f}</b> ({} trabajadores), sin volver a llenar tus datos.
-                            </p>
-                        </div>
+                        <h3 style="color: #03318e; margin: 0; font-weight: 800; font-size: 1.2rem;">¿Tu personal requiere SCTR para ingresar a obra?</h3>
+                    </div>
+                    <hr style="border: none; border-top: 1px solid #cbd5e1; margin: 12px 0;">
+                    <p style="color: #475569; font-size: 0.9rem; margin-bottom: 15px;">Hemos guardado tus datos. Cotiza tu SCTR al instante o solicita ambas pólizas (Pack Corporativo) por WhatsApp:</p>
+                    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                        <a href="{link_cruzado_sctr}" target="_blank" style="flex: 1; text-align: center; background-color: #03318e; color: white; padding: 12px; border-radius: 8px; text-decoration: none; font-weight: 700;">⚡ Cotizar SCTR con mis datos</a>
+                        <a href="{link_wa_pack}" target="_blank" style="flex: 1; text-align: center; background-color: #089685; color: white; padding: 12px; border-radius: 8px; text-decoration: none; font-weight: 700;">📦 Solicitar Pack Vida Ley + SCTR</a>
                     </div>
                 </div>
-            """.format(datos['planilla'], datos['trabajadores']), unsafe_allow_html=True)
-
-            agregar_sctr = st.checkbox("➕ Sí, deseo ver y agregar la cotización de SCTR para esta misma planilla", value=False)
-            
-            if agregar_sctr:
-                df_sctr_base = cargar_tarifario_sctr_addon()
-                if df_sctr_base is not None:
-                    c_s1, c_s2 = st.columns(2)
-                    with c_s1:
-                        rubros_sctr = df_sctr_base['Rubro'].dropna().unique().tolist()
-                        rubro_sctr_sel = st.selectbox("Confirma el Giro SCTR:", rubros_sctr, key="addon_rubro_sctr")
-                    with c_s2:
-                        acts_sctr = df_sctr_base[df_sctr_base['Rubro'] == rubro_sctr_sel]['Actividad'].dropna().unique().tolist()
-                        act_sctr_sel = st.selectbox("Actividad Específica (CIIU):", acts_sctr, key="addon_act_sctr")
-                    
-                    df_res_sctr = calcular_sctr_addon(df_sctr_base, rubro_sctr_sel, act_sctr_sel, datos['planilla'])
-                    if not df_res_sctr.empty:
-                        mejor_sctr_cia = df_res_sctr.iloc[0]['Aseguradora']
-                        mejor_sctr_mes = df_res_sctr.iloc[0]['Total Mensual SCTR']
-                        
-                        df_sctr_vista = df_res_sctr.copy()
-                        for c_m in ['Salud c/IGV', 'Pensión c/IGV', 'Total Mensual SCTR', 'Total Anual SCTR']:
-                            df_sctr_vista[c_m] = df_sctr_vista[c_m].apply(lambda x: f"S/ {x:,.2f}")
-                        st.dataframe(df_sctr_vista, hide_index=True, use_container_width=True)
-                        
-                        # Resumen del PACK CORPORATIVO (Vida Ley + SCTR)
-                        pack_mensual = mejor_mes + mejor_sctr_mes
-                        st.info(f"💼 **PACK CORPORATIVO COMPLETO:** Vida Ley ({mejor_cia}) + SCTR ({mejor_sctr_cia}) = **S/ {pack_mensual:,.2f} / mes** (o Vida Ley Anual S/ {mejor_anual:,.2f} + SCTR Mensual S/ {mejor_sctr_mes:,.2f}).")
-                        
-                        msg_pack = (
-                            f"Hola YQ, acabo de cotizar el PACK CORPORATIVO ({folio}) para {datos['razon_social']} (RUC: {datos['ruc']}, {datos['trabajadores']} trab.): "
-                            f"1) Vida Ley con {mejor_cia} (Anual: S/ {mejor_anual:,.2f} / Mensual: S/ {mejor_mes:,.2f}) + "
-                            f"2) SCTR con {mejor_sctr_cia} (S/ {mejor_sctr_mes:,.2f}/mes). Deseo emitir ambas pólizas."
-                        )
-                        link_wa_pack = f"https://api.whatsapp.com/send?phone=51906462225&text={urllib.parse.quote(msg_pack)}"
-                        st.markdown(f"""
-                            <a href='{link_wa_pack}' target='_blank' style='display: flex; align-items: center; justify-content: center; width: 100%; height: 48px; background-color: #089685; color: white; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 16px;'>
-                                📦 Emitir Pack Completo (Vida Ley + SCTR) por WhatsApp
-                            </a>
-                        """, unsafe_allow_html=True)
-# ==========================================
-# 6. PIE DE PÁGINA: ACCESO ADMIN
-# ==========================================
-st.markdown("<br><br><br><br><br><br>", unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
 with st.expander("🛡️ Acceso Interno YQ (Solo Empleados)"):
-    st.text_input("Código de Autorización", type="password", placeholder="Ingresa clave", key="codigo_secreto")
-    
-    if es_admin:
-        st.success("✅ Modo Interno Activado. Historial de cotizaciones Vida Ley disponible:")
-        if st.button("📥 Descargar Historial Vida Ley (CSV)"):
-            df_hist = descargar_historial_sheets()
-            if df_hist is not None and not df_hist.empty:
-                csv_data = df_hist.to_csv(index=False).encode('utf-8-sig')
-                st.download_button("💾 Guardar Archivo CSV", csv_data, f"Historial_VidaLey_{obtener_hora_peru().strftime('%d%m%Y')}.csv", "text/csv")
-            else:
-                st.info("No hay registros en Google Sheets todavía.")
-
-st.markdown("<br><br><br><br><br><br>", unsafe_allow_html=True)
+    st.text_input("Código de Autorización", type="password", key="codigo_secreto")
+    if es_admin and st.button("📥 Descargar Historial CSV"):
+        df_hist = descargar_historial_sheets()
+        if df_hist is not None and not df_hist.empty: st.download_button("💾 Guardar CSV", df_hist.to_csv(index=False).encode('utf-8-sig'), "Historial_VidaLey.csv", "text/csv")
