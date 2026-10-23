@@ -830,48 +830,79 @@ else:
                     else:
                         st.warning("No se encontraron tasas de SCTR para esa sub-actividad.")
 
-                # DESPLIEGUE INMEDIATO DEL PACK CONSOLIDADO Y SU PROPIO PDF ABAJO
+                # DESPLIEGUE INMEDIATO DEL PACK CONSOLIDADO Y REORDENADO POR EFICIENCIA TOTAL
                 if st.session_state.get('res_sctr_addon') is not None:
                     df_res_sctr = st.session_state['res_sctr_addon']
                     act_sctr_elegida = st.session_state.get('act_sctr_elegida', '')
                     
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    st.success(f"💼 **¡Pack Corporativo Calculado!** (Vida Ley + SCTR para *{act_sctr_elegida}*)")
-
-                    # Construimos la tabla consolidada del Pack (Vida Ley + SCTR) por compañía
-                    filas_pack = []
-                    for _, r_vl in df_res.iterrows():
+                    # 1. Calculamos el costo combinado real para reordenar el Pack correctamente
+                    df_pack_calc = df_res.copy()
+                    sctr_mes_list = []
+                    for _, r_vl in df_pack_calc.iterrows():
                         cia_vl = r_vl['Aseguradora']
                         cia_sctr_search = "Sanitas + Protecta" if cia_vl == "Protecta" else cia_vl
                         match_sctr = df_res_sctr[df_res_sctr['Aseguradora SCTR'] == cia_sctr_search]
                         sctr_m = match_sctr.iloc[0]['Total Mensual SCTR'] if not match_sctr.empty else 0.0
-                        
+                        sctr_mes_list.append(sctr_m)
+                    
+                    df_pack_calc['SCTR_Mes'] = sctr_mes_list
+                    df_pack_calc['Pack_Mensual_Num'] = df_pack_calc['Bruto_Mensual'] + df_pack_calc['SCTR_Mes']
+                    df_pack_calc['Pack_Anual_Num'] = df_pack_calc['Bruto_Anual'] + (df_pack_calc['SCTR_Mes'] * 12)
+                    
+                    # Ordenamos de menor a mayor según el Pack Anual Total (y desempate por Pack Mensual)
+                    df_pack_calc = df_pack_calc.sort_values(by=['Pack_Anual_Num', 'Pack_Mensual_Num'], ascending=[True, True]).reset_index(drop=True)
+                    
+                    # Si es Admin, permitimos elegir la ganadora del Pack; si es cliente, toma la #1 real del Pack
+                    if es_admin:
+                        mejor_pack_cia = st.selectbox(
+                            "🔓 [Modo Corredor] Aseguradora a destacar como 'Mejor Opción' en el PACK:",
+                            df_pack_calc['Aseguradora'].tolist(), index=0, key="sel_admin_pack"
+                        )
+                        df_pack_calc['es_top'] = df_pack_calc['Aseguradora'] == mejor_pack_cia
+                        df_pack_calc = df_pack_calc.sort_values(by=['es_top', 'Pack_Anual_Num'], ascending=[False, True]).drop(columns=['es_top']).reset_index(drop=True)
+                    else:
+                        mejor_pack_cia = df_pack_calc.iloc[0]['Aseguradora']
+
+                    top_pack = df_pack_calc.iloc[0]
+                    # Identificamos también cuál tiene la cuota mensual más baja para mencionarla si es distinta
+                    fila_min_mes = df_pack_calc.sort_values(by='Pack_Mensual_Num', ascending=True).iloc[0]
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.success(f"💼 **¡Pack Corporativo Calculado!** Mejor Opción Combinada (Vida Ley + SCTR): **{mejor_pack_cia}**")
+
+                    # Construimos la tabla consolidada ya ordenada por la mejor opción del Pack
+                    filas_pack = []
+                    for _, r_p in df_pack_calc.iterrows():
+                        cia_vl = r_p['Aseguradora']
+                        sctr_m = r_p['SCTR_Mes']
                         filas_pack.append({
                             "Aseguradora": f"{cia_vl} (+ Sanitas)" if cia_vl == "Protecta" else cia_vl,
-                            "Vida Ley Mensual": f"S/ {r_vl['Bruto_Mensual']:,.2f}",
+                            "Vida Ley Mensual": f"S/ {r_p['Bruto_Mensual']:,.2f}",
                             "SCTR Mensual (Salud+Pensión)": f"S/ {sctr_m:,.2f}",
-                            "Pack Mensual Total": f"S/ {r_vl['Bruto_Mensual'] + sctr_m:,.2f}",
-                            "Pack Anual (VL Anual + SCTR x12)": f"S/ {r_vl['Bruto_Anual'] + (sctr_m * 12):,.2f}"
+                            "Pack Mensual Total": f"S/ {r_p['Pack_Mensual_Num']:,.2f}",
+                            "Pack Anual (VL Anual + SCTR x12)": f"S/ {r_p['Pack_Anual_Num']:,.2f}"
                         })
                     
                     df_pack_vista = pd.DataFrame(filas_pack)
                     st.dataframe(df_pack_vista, hide_index=True, use_container_width=True)
 
-                    # Generamos el PDF consolidado del Pack directamente aquí abajo
-                    razon_pack = (
-                        f"{razon_admin}<br/><br/>"
-                        f"<b>BENEFICIO PACK CORPORATIVO (VIDA LEY + SCTR):</b> Al integrar tu póliza de SCTR Salud y Pensión "
-                        f"para la actividad <i>{act_sctr_elegida}</i> bajo la misma vigencia, centralizas la emisión de constancias "
-                        f"de ingreso a obra y el control de tu planilla en un solo trámite."
+                    # Redacción inteligente del Análisis del Experto específica para el Pack
+                    ahorro_pack_vs_12m = max(0.0, (top_pack['Pack_Mensual_Num'] * 12) - top_pack['Pack_Anual_Num'])
+                    nota_flujo_mes = (
+                        f" Si priorizas el menor desembolso inicial mes a mes, <b>{fila_min_mes['Aseguradora']}</b> ofrece la cuota mensual combinada más baja con <b>S/ {fila_min_mes['Pack_Mensual_Num']:,.2f}/mes</b>."
+                        if fila_min_mes['Aseguradora'] != mejor_pack_cia else ""
                     )
-                    pdf_buffer_pack = generar_pdf_vidaley(
-                        datos, df_res, f"{folio}-PACK", razon_pack, 
-                        df_sctr_opcional=df_res_sctr, act_sctr_nombre=act_sctr_elegida
+                    razon_pack = (
+                        f"Al integrar el <b>Seguro Vida Ley + SCTR Salud y Pensión</b> para la actividad <i>{act_sctr_elegida}</i>, "
+                        f"destacamos a <b>{mejor_pack_cia}</b> como la alternativa de mayor eficiencia financiera global con una inversión anual total de "
+                        f"<b>S/ {top_pack['Pack_Anual_Num']:,.2f}</b> (Vida Ley Anual S/ {top_pack['Bruto_Anual']:,.2f} + SCTR S/ {top_pack['SCTR_Mes']*12:,.2f}), "
+                        f"generando un ahorro de <b>S/ {ahorro_pack_vs_12m:,.2f} al año</b> frente a 12 facturaciones mensuales.{nota_flujo_mes}"
                     )
 
-                    cia_top_sctr_search = "Sanitas + Protecta" if mejor_opcion_elegida == "Protecta" else mejor_opcion_elegida
-                    match_top_sctr = df_res_sctr[df_res_sctr['Aseguradora SCTR'] == cia_top_sctr_search]
-                    sctr_top_m = match_top_sctr.iloc[0]['Total Mensual SCTR'] if not match_top_sctr.empty else 0.0
+                    pdf_buffer_pack = generar_pdf_vidaley(
+                        datos, df_pack_calc, f"{folio}-PACK", razon_pack, 
+                        df_sctr_opcional=df_res_sctr, act_sctr_nombre=act_sctr_elegida
+                    )
 
                     col_p1, col_p2 = st.columns(2)
                     with col_p1:
@@ -886,14 +917,13 @@ else:
                     with col_p2:
                         msg_pack = (
                             f"Hola YQ, acabo de cotizar el PACK CORPORATIVO ({folio}-PACK) para {datos['razon_social']} "
-                            f"(RUC: {datos['ruc']}, {datos['trabajadores']} trab.): "
-                            f"1) Vida Ley con {mejor_opcion_elegida} (Anual: S/ {top_row['Bruto_Anual']:,.2f} / Mensual: S/ {top_row['Bruto_Mensual']:,.2f}) + "
-                            f"2) SCTR Mensual (S/ {sctr_top_m:,.2f}). Deseo emitir ambas constancias."
+                            f"(RUC: {datos['ruc']}, {datos['trabajadores']} trab.) y deseo emitir con {mejor_pack_cia}: "
+                            f"Pack Anual S/ {top_pack['Pack_Anual_Num']:,.2f} (o Pack Mensual S/ {top_pack['Pack_Mensual_Num']:,.2f})."
                         )
                         link_wa_pack = f"https://api.whatsapp.com/send?phone=51906462225&text={urllib.parse.quote(msg_pack)}"
                         st.markdown(f"""
                             <a href='{link_wa_pack}' target='_blank' style='display: flex; align-items: center; justify-content: center; width: 100%; height: 48px; background-color: #089685; color: white; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 16px; box-sizing: border-box;'>
-                                📦 Emitir Pack (Vida Ley + SCTR) por WhatsApp
+                                📦 Emitir Pack ({mejor_pack_cia}) por WhatsApp
                             </a>
                         """, unsafe_allow_html=True)
 
